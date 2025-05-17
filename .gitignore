@@ -1,0 +1,29 @@
+# IDE files
+.idea/
+.vscode/
+
+# Compiled Go files
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Dependency directories
+vendor/
+
+# Config files with sensitive information
+data/config.json
+
+# Transaction files
+data/transactions/
+
+# Generated Go templating files
+*_templ.go
+

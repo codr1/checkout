@@ -1,0 +1,220 @@
+package templates
+
+import (
+	"encoding/json"
+	"strconv"
+)
+
+// POS main page
+templ PosPage() {
+	@layout("POS System") {
+		<button class="logout-btn" hx-post="/logout" hx-push-url="true">Logout</button>
+		<h1>POS System</h1>
+		
+		<div class="container">
+			<div class="services-section">
+				<h2>Services</h2>
+				<div hx-get="/services" hx-trigger="load"></div>
+				
+				<div class="custom-service">
+					<h3>Custom Service</h3>
+					<form hx-post="/add-custom-service" hx-swap="none">
+						<div>
+							<input type="text" name="name" placeholder="Service name" required/>
+						</div>
+						<div>
+							<input type="text" name="description" placeholder="Description"/>
+						</div>
+						<div>
+							<input type="number" name="price" step="0.01" placeholder="Price" required/>
+						</div>
+						<button type="submit">Add to Cart</button>
+					</form>
+				</div>
+			</div>
+			
+			<div class="cart-section">
+				<h2>Current Cart</h2>
+				<div hx-get="/cart" hx-trigger="load, cartUpdated from:body"></div>
+				
+				<div hx-get="/checkout-form" hx-trigger="load"></div>
+			</div>
+		</div>
+	}
+}
+
+// Helper function to JSON encode a value
+func toJSON(v interface{}) string {
+	b, _ := json.Marshal(v)
+	return string(b)
+}
+
+// Services list component
+templ ServicesList(services []Service) {
+	<div>
+		if len(services) == 0 {
+			<p>No services available</p>
+		} else {
+			for _, service := range services {
+				<div 
+					class="service-item" 
+					hx-post="/add-to-cart" 
+					hx-swap="none" 
+					hx-vals={ toJSON(map[string]string{"id": service.ID}) }
+				>
+					<h3>{ service.Name } - ${ formatPrice(service.Price) }</h3>
+					<p>{ service.Description }</p>
+				</div>
+			}
+		}
+	</div>
+}
+
+// Cart view component
+templ CartView(items []Service, summary CartSummary) {
+	<div>
+		if len(items) == 0 {
+			<p>Cart is empty</p>
+		} else {
+			for i, item := range items {
+				<div class="cart-item">
+					<div>
+						<h3>{ item.Name }</h3>
+						<p>{ item.Description }</p>
+					</div>
+					<div>
+						<p>${ formatPrice(item.Price) }</p>
+						<button 
+							hx-post="/remove-from-cart" 
+							hx-vals={ toJSON(map[string]string{"index": strconv.Itoa(i)}) } 
+							hx-swap="none"
+						>Remove</button>
+					</div>
+				</div>
+			}
+			
+			<div class="total-section">
+				<p>Subtotal: ${ formatPrice(summary.Subtotal) }</p>
+				<p>Tax (6.25%): ${ formatPrice(summary.Tax) }</p>
+				<p>Total: ${ formatPrice(summary.Total) }</p>
+			</div>
+		}
+	</div>
+}
+
+// Checkout form component
+templ CheckoutForm() {
+	<div class="checkout-section">
+		<h2>Checkout</h2>
+		<form hx-post="/process-payment" hx-swap="none">
+			<div>
+				<label for="email">Customer Email (optional for receipt):</label>
+				<input type="email" id="email" name="email" placeholder="customer@example.com"/>
+			</div>
+			
+			<div class="payment-methods">
+				<button type="submit" class="checkout-btn" id="checkout-btn" name="payment_method" value="terminal">Process Payment with Terminal</button>
+				
+				<button type="button" class="checkout-btn" id="manual-card-btn" 
+					hx-get="/manual-card-form" 
+					hx-target="#payment-methods-container" 
+					hx-swap="innerHTML">
+					Manual Card Entry
+				</button>
+				
+				<button type="button" class="checkout-btn" id="qr-code-btn"
+					hx-get="/generate-qr-code" 
+					hx-target="#payment-methods-container" 
+					hx-swap="innerHTML">
+					Pay by QR Code
+				</button>
+			</div>
+			
+			<div id="payment-methods-container">
+				<!-- Payment method forms will be loaded here via HTMX -->
+			</div>
+		</form>
+	</div>
+	
+	<script>
+		
+		// Format card number as the user types (adds spaces)
+		function formatCardNumber(input) {
+			// Strip all non-numeric characters
+			let value = input.value.replace(/\D/g, '');
+			// Re-add spaces after every 4 digits
+			let formattedValue = '';
+			for (let i = 0; i < value.length; i++) {
+				if (i > 0 && i % 4 === 0) {
+					formattedValue += ' ';
+				}
+				formattedValue += value[i];
+			}
+			input.value = formattedValue;
+			
+			// Detect card type
+			detectCardType(value);
+		}
+		
+		// Detect and display card type based on number
+		function detectCardType(number) {
+			const cardTypeElement = document.getElementById('card-type');
+			
+			// Basic regex patterns for card detection
+			const patterns = {
+				visa: /^4/,
+				mastercard: /^5[1-5]/,
+				amex: /^3[47]/,
+				discover: /^6(?:011|5)/
+			};
+			
+			let cardType = '';
+			
+			if (patterns.visa.test(number)) {
+				cardType = 'Visa';
+			} else if (patterns.mastercard.test(number)) {
+				cardType = 'MasterCard';
+			} else if (patterns.amex.test(number)) {
+				cardType = 'American Express';
+			} else if (patterns.discover.test(number)) {
+				cardType = 'Discover';
+			}
+			
+			cardTypeElement.textContent = cardType;
+		}
+		
+		// Format expiry date as MM/YY
+		function formatExpiry(input) {
+			// Strip all non-numeric characters
+			let value = input.value.replace(/\D/g, '');
+			
+			// Add slash after month
+			if (value.length > 2) {
+				value = value.substring(0, 2) + '/' + value.substring(2, 4);
+			}
+			
+			// Validate month (01-12)
+			if (value.length >= 2) {
+				let month = parseInt(value.substring(0, 2));
+				if (month < 1) {
+					value = '01' + value.substring(2);
+				} else if (month > 12) {
+					value = '12' + value.substring(2);
+				}
+			}
+			
+			input.value = value;
+		}
+		
+		// Only allow numeric input
+		function validateNumericInput(input) {
+			input.value = input.value.replace(/\D/g, '');
+		}
+	</script>
+}
+
+// Helper function to format price
+func formatPrice(price float64) string {
+	return strconv.FormatFloat(price, 'f', 2, 64)
+}
+

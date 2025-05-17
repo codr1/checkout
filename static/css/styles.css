@@ -1,0 +1,271 @@
+body { 
+    font-family: Arial, sans-serif; 
+    max-width: 1000px; 
+    margin: 0 auto; 
+    padding: 20px; 
+}
+.container { 
+    display: flex; 
+}
+.services-section { 
+    flex: 1; 
+    border-right: 1px solid #ddd; 
+    padding-right: 20px; 
+}
+.cart-section { 
+    flex: 1; 
+    padding-left: 20px; 
+}
+.service-item { 
+    border: 1px solid #ddd; 
+    padding: 10px; 
+    margin-bottom: 10px; 
+    border-radius: 5px; 
+    cursor: pointer; 
+}
+.service-item:hover { 
+    background-color: #f5f5f5; 
+}
+.cart-item { 
+    display: flex; 
+    justify-content: space-between; 
+    padding: 10px; 
+    border-bottom: 1px solid #ddd; 
+}
+.total-section { 
+    margin-top: 20px; 
+    font-size: 18px; 
+    font-weight: bold; 
+}
+.checkout-btn { 
+    padding: 15px 30px; 
+    background-color: #4CAF50; 
+    color: white; 
+    border: none; 
+    cursor: pointer; 
+    font-size: 18px; 
+    margin-top: 10px; 
+    width: 100%; 
+}
+
+/* Payment method buttons styling */
+.payment-methods {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+#manual-card-btn {
+    background-color: #008CBA; /* Blue */
+}
+
+#qr-code-btn {
+    background-color: #ff9800; /* Orange */
+}
+
+/* Payment forms styling */
+.payment-form {
+    margin-top: 20px;
+    padding: 15px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    background-color: #f9f9f9;
+}
+
+.payment-form h3 {
+    margin-top: 0;
+    color: #333;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 10px;
+    margin-bottom: 15px;
+}
+
+.form-row {
+    display: flex;
+    gap: 15px;
+}
+
+.form-row > div {
+    flex: 1;
+}
+
+/* QR code styling */
+.qr-code {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin: 20px 0;
+}
+
+.qr-code img, .qr-code svg {
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    padding: 15px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    background-color: white;
+}
+
+.total-amount {
+    font-weight: bold;
+    font-size: 18px;
+    margin-top: 15px;
+    color: #333;
+}
+
+.payment-intent-id {
+    font-size: 14px;
+    color: #666;
+    margin-top: 10px;
+}
+
+.instructions {
+    margin-top: 10px;
+    font-size: 16px;
+    color: #444;
+    text-align: center;
+}
+
+/* Card type indicator */
+.card-type {
+    margin-top: 5px;
+    font-weight: bold;
+    color: #008CBA;
+    height: 20px; /* Fixed height to prevent layout shifts */
+}
+
+/* Card errors display */
+.card-errors {
+    color: #e74c3c;
+    margin: 10px 0;
+    padding: 8px 0;
+    min-height: 20px;
+    font-size: 14px;
+}
+
+/* Payment button */
+.payment-button {
+    background-color: #008CBA;
+    color: white;
+    font-weight: bold;
+    padding: 12px 20px;
+    border: none;
+    border-radius: 4px;
+    width: 100%;
+    margin-top: 15px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.payment-button:hover {
+    background-color: #0073a1;
+}
+
+/* QR code error display */
+.qr-code-error {
+    text-align: center;
+    padding: 20px;
+    background-color: #f8f8f8;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+    margin: 20px 0;
+}
+
+.qr-code-error p {
+    color: #e74c3c;
+    margin-bottom: 15px;
+    font-size: 16px;
+}
+
+.close-btn {
+    background-color: #e74c3c;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 15px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.close-btn:hover {
+    background-color: #c0392b;
+}
+
+/* Loading indicator for QR code */
+.loading-indicator {
+    text-align: center;
+    padding: 30px;
+    color: #666;
+    font-style: italic;
+    background-color: #f9f9f9;
+    border-radius: 8px;
+    border: 1px dashed #ddd;
+    margin: 20px 0;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 0.6; }
+    50% { opacity: 1; }
+    100% { opacity: 0.6; }
+}
+.custom-service { 
+    margin-top: 20px; 
+    padding: 15px; 
+    border: 1px solid #ddd; 
+    border-radius: 5px; 
+}
+.custom-service input, .custom-service button { 
+    margin-top: 10px; 
+    padding: 8px; 
+}
+.custom-service button { 
+    background-color: #008CBA; 
+    color: white; 
+    border: none; 
+    cursor: pointer; 
+}
+.logout-btn { 
+    position: absolute; 
+    top: 20px; 
+    right: 20px; 
+    padding: 5px 10px; 
+    background-color: #f44336; 
+    color: white; 
+    border: none; 
+    cursor: pointer; 
+}
+.login-container { 
+    margin-top: 100px; 
+    text-align: center; 
+}
+input[type="password"], input[type="text"], input[type="email"], input[type="number"] { 
+    padding: 10px; 
+    font-size: 16px; 
+    width: 100%; 
+    box-sizing: border-box; 
+    margin: 10px 0; 
+}
+.login-container input[type="password"] {
+    text-align: center;
+    width: 200px;
+}
+button { 
+    padding: 10px 20px; 
+    background-color: #4CAF50; 
+    color: white; 
+    border: none; 
+    cursor: pointer; 
+    font-size: 16px; 
+}
+.toast { 
+    position: fixed; 
+    top: 20px; 
+    right: 20px; 
+    background-color: #f44336; 
+    color: white; 
+    padding: 15px; 
+    border-radius: 5px; 
+    display: none; 
+}
+

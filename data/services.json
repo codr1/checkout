@@ -1,0 +1,20 @@
+[
+  {
+    "id": "1",
+    "name": "Service 1",
+    "description": "Basic service",
+    "price": 50
+  },
+  {
+    "id": "2",
+    "name": "Service 2",
+    "description": "Premium service",
+    "price": 100
+  },
+  {
+    "id": "3",
+    "name": "Service 3",
+    "description": "Deluxe service",
+    "price": 150
+  }
+]
