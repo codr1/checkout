@@ -1,0 +1,39 @@
+package pos
+
+import (
+	"strconv"
+	"checkout/templates"
+)
+
+// Cart view component
+templ CartView(items []templates.Service, summary templates.CartSummary) {
+	<div>
+		if len(items) == 0 {
+			<p>Cart is empty</p>
+		} else {
+			for i, item := range items {
+				<div class="cart-item">
+					<div>
+						<h3>{ item.Name }</h3>
+						<p>{ item.Description }</p>
+					</div>
+					<div>
+						<p>${ FormatPrice(item.Price) }</p>
+						<button 
+							hx-post="/remove-from-cart" 
+							hx-vals={ ToJSON(map[string]string{"index": strconv.Itoa(i)}) } 
+							hx-swap="none"
+						>Remove</button>
+					</div>
+				</div>
+			}
+			
+			<div class="total-section">
+				<p>Subtotal: ${ FormatPrice(summary.Subtotal) }</p>
+				<p>Tax (6.25%): ${ FormatPrice(summary.Tax) }</p>
+				<p>Total: ${ FormatPrice(summary.Total) }</p>
+			</div>
+		}
+	</div>
+}
+

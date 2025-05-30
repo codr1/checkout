@@ -1,0 +1,23 @@
+package checkout
+
+// PaymentDeclinedModal displays a message when a payment is declined.
+templ PaymentDeclinedModal(declineMessage string, paymentIntentID string) {
+	<div class="payment-declined-container">
+		<h3>Payment Declined</h3>
+		<p>{ declineMessage }</p>
+		if paymentIntentID != "" {
+			<p><small>Details Ref: { paymentIntentID }</small></p>
+		}
+		<div class="modal-footer">
+			<button
+				type="button"
+				class="close-btn"
+				hx-post="/close-modal"
+				hx-swap="none"
+			>
+				OK
+			</button>
+		</div>
+	</div>
+}
+

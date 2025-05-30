@@ -1,0 +1,103 @@
+package checkout
+
+// Payment Success Component
+templ PaymentSuccess(confirmationCode string, hasContactInfo bool) {
+	<div class="payment-success" id="payment-container">
+		<h3>Payment Successful! ✅</h3>
+		<p>Your payment has been processed successfully.</p>
+		<p>Confirmation Code: { confirmationCode }</p>
+		
+		if hasContactInfo {
+			<p>A receipt will be sent to the contact information you provided.</p>
+		} else {
+			@ReceiptForm(confirmationCode)
+		}
+		
+		<button
+			type="button"
+			class="close-btn"
+			hx-post="/close-modal"
+			hx-target="body"
+			hx-trigger="click"
+			hx-swap="none"
+		>
+			Close
+		</button>
+	</div>
+}
+
+// Receipt Form Component
+templ ReceiptForm(confirmationCode string) {
+	<div class="receipt-form">
+		<h4>Would you like to receive a receipt?</h4>
+		<form hx-post="/update-receipt-info" hx-include="[name='confirmation_code']" hx-swap="none">
+			<input type="hidden" name="confirmation_code" value={ confirmationCode } />
+			<div>
+				<label for="receipt_email">Email:</label>
+				<input type="email" id="receipt_email" name="receipt_email" placeholder="your@email.com" />
+			</div>
+			<div>
+				<label for="receipt_phone">Phone Number:</label>
+				<input type="tel" id="receipt_phone" name="receipt_phone" placeholder="(123) 456-7890" />
+			</div>
+			<button type="submit">Send Receipt</button>
+		</form>
+	</div>
+}
+
+// Payment Expired Component
+templ PaymentExpired(expirationCode string) {
+	<div class="payment-expired">
+		<h3>Payment Link Expired ⌛</h3>
+		<p>The payment link has expired and has been cancelled.</p>
+		<p>Expiration Code: { expirationCode }</p>
+		<button
+			type="button"
+			class="close-btn"
+			hx-post="/close-modal"
+			hx-target="body"
+			hx-trigger="click"
+			hx-swap="none"
+		>
+			Close
+		</button>
+		<button
+			type="button"
+			class="retry-btn"
+			hx-get="/generate-qr-code"
+			hx-target="#modal-content"
+			hx-swap="innerHTML"
+		>
+			Try Again
+		</button>
+	</div>
+}
+
+// Payment Cancelled Component
+templ PaymentCancelled(cancellationCode string) {
+	<div class="payment-cancelled">
+		<h3>Payment Link Cancelled</h3>
+		<p>The payment link has been cancelled.</p>
+		<p>Cancellation Code: { cancellationCode }</p>
+		<button 
+			type="button" 
+			class="close-btn"
+			hx-post="/close-modal"
+			hx-target="body"
+			hx-trigger="click"
+			hx-swap="none"
+		>
+			Close
+		</button>
+		<button 
+			type="button" 
+			class="retry-btn" 
+			hx-get="/generate-qr-code" 
+			hx-target="#modal-content" 
+			hx-swap="innerHTML"
+		>
+			Try Again
+		</button>
+	</div>
+}
+

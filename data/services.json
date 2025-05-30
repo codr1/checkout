@@ -1,20 +1,28 @@
 [
   {
     "id": "1",
-    "name": "Service 1",
+    "name": "Court Time",
     "description": "Basic service",
-    "price": 50
+    "price": 50,
+    "stripeProductID": "prod_SOJ8BDMVOR3Amm",
+    "priceID": "price_1RTWWg00bLhtgRGrS8NYlRU2"
   },
   {
     "id": "2",
-    "name": "Service 2",
+    "name": "Personal Training",
     "description": "Premium service",
-    "price": 100
+    "price": 100,
+    "stripeProductID": "prod_SOJ8bLFjLQkzv4",
+    "priceID": "price_1RTWWg00bLhtgRGrCcu2Hx0s",
+    "category": "personal_training"
   },
   {
     "id": "3",
-    "name": "Service 3",
-    "description": "Deluxe service",
-    "price": 150
+    "name": "Cute Skirt",
+    "description": "Flower Pattern Paddleball Skirt",
+    "price": 150,
+    "stripeProductID": "prod_SOJ8SI7Jqro2ih",
+    "priceID": "price_1RTWWh00bLhtgRGrgRk9DwNJ",
+    "category": "clothing_exempt"
   }
 ]

@@ -1,0 +1,47 @@
+package checkout
+
+// TerminalInteractionResultModal displays a generic outcome for terminal interactions
+// like timeout, cancellation, or other non-success, non-failure states from polling/expiration.
+// The 'showRetry' flag can control if a retry button (generic to new sale) is shown.
+// The 'closeActionURL' can be used to specify where the close button navigates or triggers, defaulting to /close-modal.
+templ TerminalInteractionResultModal(title string, message string, referenceID string, showClose bool, closeActionURL string) {
+	<div class="terminal-interaction-result">
+		<h3>{ title }</h3>
+		<p>{ message }</p>
+		if referenceID != "" {
+			<p><small>Reference ID: { referenceID }</small></p>
+		}
+
+		<div class="modal-footer">
+			if showClose {
+				<button
+					type="button"
+					class="close-btn"
+					onclick="document.getElementById('modal-container').classList.add('hidden');"
+					if closeActionURL != "" && closeActionURL != "/close-modal" {
+						hx-get={ closeActionURL }
+						hx-target="#payment-methods-container" 
+						hx-swap="innerHTML"
+					} else {
+						hx-post="/close-modal"
+						hx-swap="none"
+					}
+				>
+					Close
+				</button>
+			}
+			<button
+				type="button"
+				class="checkout-btn"
+				hx-get="/" 
+				hx-target="body"
+				hx-push-url="true"
+				hx-swap="outerHTML"
+				onclick="document.getElementById('modal-container').classList.add('hidden');"
+			>
+				New Sale
+			</button>
+		</div>
+	</div>
+}
+

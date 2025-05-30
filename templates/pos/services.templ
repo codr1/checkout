@@ -1,0 +1,27 @@
+package pos
+
+import (
+	"checkout/templates"
+)
+
+// Services list component
+templ ServicesList(services []templates.Service) {
+	<div>
+		if len(services) == 0 {
+			<p>No services available</p>
+		} else {
+			for _, service := range services {
+				<div 
+					class="service-item" 
+					hx-post="/add-to-cart" 
+					hx-swap="none" 
+					hx-vals={ ToJSON(map[string]string{"id": service.ID}) }
+				>
+					<h3>{ service.Name } - ${ FormatPrice(service.Price) }</h3>
+					<p>{ service.Description }</p>
+				</div>
+			}
+		}
+	</div>
+}
+

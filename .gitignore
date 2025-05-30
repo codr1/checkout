@@ -19,6 +19,7 @@
 vendor/
 
 # Config files with sensitive information
+data/
 data/config.json
 
 # Transaction files
@@ -27,3 +28,5 @@ data/transactions/
 # Generated Go templating files
 *_templ.go
 
+REFACTORING_SUMMARY.md
+Session.vim

@@ -1,0 +1,93 @@
+package pos
+
+import (
+	"checkout/templates"
+	"fmt"
+)
+
+// POS main page
+templ Page(availableReaders []templates.StripeReader, selectedReaderID string) {
+	@templates.Layout("POS System") {
+		<div class="top-bar-controls">
+			if len(availableReaders) > 0 {
+				<form class="reader-select-form" hx-post="/set-selected-reader" hx-trigger="change" hx-swap="none">
+					<label for="reader_id_select">Terminal:</label>
+					<select name="reader_id" id="reader_id_select">
+						for _, reader := range availableReaders {
+							<option value="{ reader.ID }" selected="{ reader.ID == selectedReaderID }">
+								if reader.Label != "" {
+									if reader.Status != "online" {
+										{ fmt.Sprintf("%s (%s)", reader.Label, reader.Status) }
+									} else {
+										{ reader.Label }
+									}
+								} else {
+									if reader.Status != "online" {
+										{ fmt.Sprintf("%s (%s)", reader.ID, reader.Status) }
+									} else {
+										{ reader.ID }
+									}
+								}
+							</option>
+						}
+					</select>
+					// Adding a submit button for accessibility/fallback, though hx-trigger="change" handles it.
+					// This button can be hidden with CSS if desired.
+					<button type="submit" style="display:none;">Set Reader</button>
+				</form>
+			} else {
+				<span class="no-readers-available">No terminal readers configured.</span>
+			}
+				
+				<div class="actions-menu">
+					<button class="actions-menu-btn" onclick="toggleActionsMenu()">
+						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+							<circle cx="12" cy="12" r="3"></circle>
+							<path d="m12 1 0 6m0 6 0 6"></path>
+							<path d="m17.5 6.5-3 3m-6 0-3-3"></path>
+							<path d="m17.5 17.5-3-3m-6 0-3 3"></path>
+						</svg>
+					</button>
+					<div class="actions-dropdown" id="actionsDropdown">
+						<div class="dropdown-item" hx-post="/clear-terminal-transaction" hx-swap="none" hx-confirm="Are you sure you want to clear the current terminal transaction? This will cancel any pending payment.">
+							Clear Transaction
+						</div>
+					</div>
+				</div>
+				
+			<button class="logout-btn" hx-post="/logout" hx-push-url="true">Logout</button>
+		</div>
+
+		<h1>POS System</h1>
+		
+		<div class="container">
+			<div class="services-section">
+				<h2>Services</h2>
+				<div hx-get="/services" hx-trigger="load"></div>
+				
+				<div class="custom-service">
+					<h3>Custom Service</h3>
+					<form hx-post="/add-custom-service" hx-swap="none">
+						<div>
+							<input type="text" name="name" placeholder="Service name" required/>
+						</div>
+						<div>
+							<input type="text" name="description" placeholder="Description"/>
+						</div>
+						<div>
+							<input type="number" name="price" step="0.01" placeholder="Price" required/>
+						</div>
+						<button type="submit">Add to Cart</button>
+					</form>
+				</div>
+			</div>
+			
+			<div class="cart-section">
+				<h2>Current Cart</h2>
+				<div hx-get="/cart" hx-trigger="load, cartUpdated from:body"></div>
+				
+				<div hx-get="/checkout-form" hx-trigger="load"></div>
+			</div>
+		</div>
+	}
+}

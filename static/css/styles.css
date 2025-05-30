@@ -1,271 +1,488 @@
-body { 
-    font-family: Arial, sans-serif; 
-    max-width: 1000px; 
-    margin: 0 auto; 
-    padding: 20px; 
-}
-.container { 
-    display: flex; 
-}
-.services-section { 
-    flex: 1; 
-    border-right: 1px solid #ddd; 
-    padding-right: 20px; 
-}
-.cart-section { 
-    flex: 1; 
-    padding-left: 20px; 
-}
-.service-item { 
-    border: 1px solid #ddd; 
-    padding: 10px; 
-    margin-bottom: 10px; 
-    border-radius: 5px; 
-    cursor: pointer; 
-}
-.service-item:hover { 
-    background-color: #f5f5f5; 
-}
-.cart-item { 
-    display: flex; 
-    justify-content: space-between; 
-    padding: 10px; 
-    border-bottom: 1px solid #ddd; 
-}
-.total-section { 
-    margin-top: 20px; 
-    font-size: 18px; 
-    font-weight: bold; 
-}
-.checkout-btn { 
-    padding: 15px 30px; 
-    background-color: #4CAF50; 
-    color: white; 
-    border: none; 
-    cursor: pointer; 
-    font-size: 18px; 
-    margin-top: 10px; 
-    width: 100%; 
+/* Base styles */
+body {
+  font-family: Arial, sans-serif;
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 20px;
 }
 
-/* Payment method buttons styling */
-.payment-methods {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    margin-top: 20px;
+/* Layout */
+.container {
+  display: flex;
 }
 
-#manual-card-btn {
-    background-color: #008CBA; /* Blue */
+.services-section,
+.cart-section {
+  flex: 1;
 }
 
-#qr-code-btn {
-    background-color: #ff9800; /* Orange */
+.services-section {
+  border-right: 1px solid #ddd;
+  padding-right: 20px;
 }
 
-/* Payment forms styling */
-.payment-form {
-    margin-top: 20px;
-    padding: 15px;
-    border: 1px solid #ddd;
-    border-radius: 5px;
-    background-color: #f9f9f9;
+.cart-section {
+  padding-left: 20px;
 }
 
-.payment-form h3 {
-    margin-top: 0;
-    color: #333;
-    border-bottom: 1px solid #ddd;
-    padding-bottom: 10px;
-    margin-bottom: 15px;
+/* Service items */
+.service-item {
+  border: 1px solid #ddd;
+  padding: 10px;
+  margin-bottom: 10px;
+  border-radius: 5px;
+  cursor: pointer;
 }
 
-.form-row {
-    display: flex;
-    gap: 15px;
+.service-item:hover {
+  background-color: #f5f5f5;
 }
 
-.form-row > div {
-    flex: 1;
+/* Cart items */
+.cart-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px;
+  border-bottom: 1px solid #ddd;
 }
 
-/* QR code styling */
-.qr-code {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    margin: 20px 0;
+.total-section {
+  margin-top: 20px;
+  font-size: 18px;
+  font-weight: bold;
 }
 
-.qr-code img, .qr-code svg {
-    border: 1px solid #ddd;
-    border-radius: 10px;
-    padding: 15px;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-    background-color: white;
+/* Button styles */
+button {
+  padding: 10px 20px;
+  background-color: #4caf50;
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
 }
 
-.total-amount {
-    font-weight: bold;
-    font-size: 18px;
-    margin-top: 15px;
-    color: #333;
-}
-
-.payment-intent-id {
-    font-size: 14px;
-    color: #666;
-    margin-top: 10px;
-}
-
-.instructions {
-    margin-top: 10px;
-    font-size: 16px;
-    color: #444;
-    text-align: center;
-}
-
-/* Card type indicator */
-.card-type {
-    margin-top: 5px;
-    font-weight: bold;
-    color: #008CBA;
-    height: 20px; /* Fixed height to prevent layout shifts */
-}
-
-/* Card errors display */
-.card-errors {
-    color: #e74c3c;
-    margin: 10px 0;
-    padding: 8px 0;
-    min-height: 20px;
-    font-size: 14px;
-}
-
-/* Payment button */
-.payment-button {
-    background-color: #008CBA;
-    color: white;
-    font-weight: bold;
-    padding: 12px 20px;
-    border: none;
-    border-radius: 4px;
-    width: 100%;
-    margin-top: 15px;
-    cursor: pointer;
-    transition: background-color 0.3s;
-}
-
-.payment-button:hover {
-    background-color: #0073a1;
-}
-
-/* QR code error display */
-.qr-code-error {
-    text-align: center;
-    padding: 20px;
-    background-color: #f8f8f8;
-    border-radius: 8px;
-    border: 1px solid #ddd;
-    margin: 20px 0;
-}
-
-.qr-code-error p {
-    color: #e74c3c;
-    margin-bottom: 15px;
-    font-size: 16px;
+.checkout-btn .cancel-btn {
+  padding: 15px 30px;
+  font-size: 18px;
+  margin-top: 10px;
+  border-radius: 4px;
 }
 
 .close-btn {
-    background-color: #e74c3c;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    padding: 8px 15px;
-    cursor: pointer;
-    font-size: 14px;
+  background-color: #e74c3c;
+  padding: 8px 15px;
+  font-size: 14px;
+  border-radius: 4px;
 }
 
 .close-btn:hover {
-    background-color: #c0392b;
+  background-color: #c0392b;
 }
 
-/* Loading indicator for QR code */
-.loading-indicator {
-    text-align: center;
-    padding: 30px;
-    color: #666;
-    font-style: italic;
-    background-color: #f9f9f9;
-    border-radius: 8px;
-    border: 1px dashed #ddd;
-    margin: 20px 0;
-    animation: pulse 1.5s infinite;
+.cancel-btn {
+  background-color: #f8f9fa;
+  color: #212529;
+  border: 1px solid #dee2e6;
 }
 
-@keyframes pulse {
-    0% { opacity: 0.6; }
-    50% { opacity: 1; }
-    100% { opacity: 0.6; }
+.cancel-btn:hover {
+  background-color: #e2e6ea;
+  border-color: #dae0e5;
 }
-.custom-service { 
-    margin-top: 20px; 
-    padding: 15px; 
-    border: 1px solid #ddd; 
-    border-radius: 5px; 
+
+.manual-card-form .checkout-btn,
+.manual-card-form .cancel-btn {
+  display: inline-block;
+  width: auto;
+  margin-right: 10px;
 }
-.custom-service input, .custom-service button { 
-    margin-top: 10px; 
-    padding: 8px; 
+
+.manual-card-form .button-group {
+  margin-top: 20px;
+  display: flex;
+  justify-content: flex-end;
 }
-.custom-service button { 
-    background-color: #008CBA; 
-    color: white; 
-    border: none; 
-    cursor: pointer; 
+
+/* Payment methods */
+.payment-methods {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 20px;
 }
-.logout-btn { 
-    position: absolute; 
-    top: 20px; 
-    right: 20px; 
-    padding: 5px 10px; 
-    background-color: #f44336; 
-    color: white; 
-    border: none; 
-    cursor: pointer; 
+
+#manual-card-btn {
+  background-color: #008cba;
 }
-.login-container { 
-    margin-top: 100px; 
-    text-align: center; 
+
+#qr-code-btn {
+  background-color: #ff9800;
 }
-input[type="password"], input[type="text"], input[type="email"], input[type="number"] { 
-    padding: 10px; 
-    font-size: 16px; 
-    width: 100%; 
-    box-sizing: border-box; 
-    margin: 10px 0; 
+
+/* QR code styles */
+.qr-code {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 20px 0;
 }
+
+.qr-code img {
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  padding: 15px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  background-color: white;
+}
+
+.total-amount {
+  font-weight: bold;
+  font-size: 18px;
+  margin-top: 15px;
+  color: #333;
+}
+
+.instructions {
+  margin-top: 10px;
+  font-size: 16px;
+  color: #444;
+  text-align: center;
+}
+
+/* Progress bar */
+.countdown-container {
+  text-align: center;
+  margin: 15px auto;
+  max-width: 300px;
+}
+
+.countdown-container p {
+  font-size: 16px;
+  margin-bottom: 8px;
+  color: #555;
+}
+
+.countdown-container #countdown {
+  font-weight: bold;
+  color: #f44336;
+}
+
+.progress-bar {
+  height: 8px;
+  background-color: #f0f0f0;
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 8px 0;
+}
+
+.progress-fill {
+  height: 100%;
+  background-color: #4caf50;
+  border-radius: 4px;
+  transition: width 1s linear;
+}
+
+/* Form elements */
+input[type="password"],
+input[type="text"],
+input[type="email"],
+input[type="number"],
+input[type="tel"] {
+  padding: 10px;
+  font-size: 16px;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 10px 0;
+}
+
+/* Card type display */
+#card-type {
+  margin-top: 5px;
+  font-weight: bold;
+  color: #008cba;
+  height: 20px;
+}
+
+/* Custom service form */
+.custom-service {
+  margin-top: 20px;
+  padding: 15px;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+}
+
+.custom-service input,
+.custom-service button {
+  margin-top: 10px;
+  padding: 8px;
+}
+
+.custom-service button {
+  background-color: #008cba;
+  color: white;
+  border: none;
+}
+
+/* Login styling */
+.login-container {
+  margin-top: 100px;
+  text-align: center;
+}
+
+.login-logo {
+  max-width: 200px; /* Adjust this value as needed */
+  height: auto;
+  margin-bottom: 20px; /* Add some space below the logo */
+}
+
 .login-container input[type="password"] {
-    text-align: center;
-    width: 200px;
-}
-button { 
-    padding: 10px 20px; 
-    background-color: #4CAF50; 
-    color: white; 
-    border: none; 
-    cursor: pointer; 
-    font-size: 16px; 
-}
-.toast { 
-    position: fixed; 
-    top: 20px; 
-    right: 20px; 
-    background-color: #f44336; 
-    color: white; 
-    padding: 15px; 
-    border-radius: 5px; 
-    display: none; 
+  text-align: center;
+  width: 200px;
 }
 
+/* Removed absolute positioning to work with flexbox layout */
+
+/* Error message */
+.error-message {
+  color: white;
+  background-color: #f44336;
+  padding: 10px;
+  margin: 10px auto 20px auto;
+  border-radius: 4px;
+  max-width: 300px;
+  text-align: center;
+  font-weight: bold;
+}
+
+.error-message:empty {
+  display: none;
+}
+
+/* Toast notifications */
+.toast {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background-color: #f44336;
+  color: white;
+  padding: 15px;
+  border-radius: 5px;
+  display: none;
+  z-index: 1000;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  font-weight: bold;
+  min-width: 250px;
+  text-align: center;
+}
+
+.toast.show {
+  display: block;
+  animation:
+    fadeIn 0.5s,
+    fadeOut 0.5s 2.5s;
+}
+
+/* Modal dialog */
+.modal-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-container.hidden {
+  display: none;
+}
+
+.modal-background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(3px);
+}
+
+.modal-content {
+  position: relative;
+  background-color: white;
+  border-radius: 8px;
+  padding: 20px;
+  max-width: 500px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  z-index: 1001;
+}
+
+.modal-content h3 {
+  margin-top: 0;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 10px;
+}
+
+.modal-footer {
+  margin-top: 20px;
+  text-align: right;
+  padding-top: 15px; /* Optional: add some space above the buttons */
+  border-top: 1px solid #eee; /* Optional: visually separate footer */
+}
+
+/* Receipt form */
+.receipt-form {
+  margin-top: 15px;
+  padding: 15px;
+  background-color: #f9f9f9;
+  border-radius: 5px;
+  border: 1px solid #eee;
+}
+
+.receipt-form h4 {
+  margin-top: 0;
+  color: #333;
+}
+
+/* Button variants */
+.modal-content .close-btn,
+.modal-content .retry-btn {
+  margin-top: 15px;
+  padding: 10px 20px;
+}
+
+.modal-content .close-btn {
+  background-color: #6c757d;
+  margin-right: 10px;
+}
+
+.modal-content .retry-btn {
+  background-color: #0d6efd;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* Styles for top bar controls, reader selection, and logout button */
+.top-bar-controls {
+  position: absolute;
+  top: 10px;
+  right: 10px; /* Moved further to the right */
+  display: flex;
+  align-items: center;
+  gap: 30px; /* More air between elements */
+}
+
+.reader-select-form {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.reader-select-form label {
+  font-weight: bold;
+}
+
+.reader-select-form select {
+  padding: 5px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+}
+
+.no-readers-available {
+  font-style: italic;
+  color: #777;
+}
+
+/* Actions menu styles */
+.actions-menu {
+  position: relative;
+  display: inline-block;
+}
+
+.actions-menu-btn {
+  padding: 8px;
+  background-color: #6c757d;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.actions-menu-btn:hover {
+  background-color: #5a6268;
+}
+
+.actions-dropdown {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 100%;
+  background-color: white;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  min-width: 180px;
+  margin-top: 2px;
+}
+
+.actions-dropdown.show {
+  display: block;
+}
+
+.dropdown-item {
+  padding: 10px 15px;
+  cursor: pointer;
+  border-bottom: 1px solid #eee;
+  color: #333;
+  white-space: nowrap;
+}
+
+.dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.dropdown-item:hover {
+  background-color: #f8f9fa;
+}
+
+.logout-btn {
+  /* Ensure this doesn't conflict with existing .logout-btn if it's different */
+  padding: 8px 15px;
+  background-color: #f44336; /* Match existing logout-btn if possible */
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  text-decoration: none; /* Added for consistency if it's a link-like button */
+}
+
+.logout-btn:hover {
+  background-color: #d32f2f; /* Darken on hover */
+}
