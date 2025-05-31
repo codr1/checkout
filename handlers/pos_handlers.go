@@ -134,9 +134,9 @@ func ClearTerminalTransactionHandler(w http.ResponseWriter, r *http.Request) {
 		// Even if there's an error (e.g., no action to cancel), we'll still clear our internal state
 	}
 
-	// Clear any pending payment intent or transaction state in our app
-	// Reset any payment-related state in the services layer
-	services.ClearPaymentState()
+	// Clear any pending payment intent or transaction state using unified state manager
+	// This clears all payment states and the cart
+	GlobalPaymentStateManager.ClearAllAndClearCart()
 
 	log.Printf("[ClearTerminalTransactionHandler] Terminal transaction cleared for reader: %s", selectedReaderID)
 	

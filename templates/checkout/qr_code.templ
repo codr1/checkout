@@ -1,9 +1,5 @@
 package checkout
 
-import (
-	"checkout/templates/pos"
-)
-
 // QR Code Payment Section - Empty container that will be filled by the server
 templ QRCodeSection() {
 	<div class="qr-code-section" id="payment-container">
@@ -20,49 +16,8 @@ templ QRCodeDisplay(qrBase64 string, paymentLinkID string, totalAmount float64) 
 	@QRCodeDisplayWithEmail(qrBase64, paymentLinkID, totalAmount, "")
 }
 
-// QR Code Display with email - Used after QR code is generated with email
+// QR Code Display with email - Uses the unified QR payment container
 templ QRCodeDisplayWithEmail(qrBase64 string, paymentLinkID string, totalAmount float64, customerEmail string) {
-	<div class="qr-code-section" id="payment-container">
-		<h3>Payment QR Code</h3>
-		
-		<!-- QR Code Display -->
-		<div class="qr-code">
-			<img src={ "data:image/png;base64," + qrBase64 } alt="Payment QR Code" width="256" height="256">
-			<p class="total-amount">Total Amount: ${ pos.FormatPrice(totalAmount) }</p>
-			<p class="instructions">Scan with your camera app to pay</p>
-		</div>
-		
-		<!-- Hidden payment link ID and customer email -->
-		<input type="hidden" name="payment_link_id" id="payment_link_id" value={ paymentLinkID } />
-		<input type="hidden" name="customer_email" id="customer_email" value={ customerEmail } />
-		
-		<!-- Status div with polling -->
-		<div id="payment-status"
-			hx-get={ "/check-paymentlink-status?payment_link_id=" + paymentLinkID + "&customer_email=" + customerEmail } 
-			hx-trigger="load, every 2s" 
-			hx-swap="innerHTML">
-		</div>
-		
-		<!-- Auto-expiration trigger -->
-		<div 
-			hx-post="/expire-payment-link" 
-			hx-include="[name='payment_link_id']" 
-			hx-target="#modal-content" 
-			hx-swap="innerHTML" 
-			hx-trigger="load delay:120s">
-		</div>
-		
-		<!-- Cancel payment button -->
-		<button 
-			type="button" 
-			class="cancel-btn" 
-			hx-post="/cancel-payment-link"
-			hx-include="[name='payment_link_id']"
-			hx-target="#modal-content" 
-			hx-swap="innerHTML"
-		>
-			Cancel Payment
-		</button>
-	</div>
+	@QRPaymentContainer(qrBase64, paymentLinkID, totalAmount, customerEmail)
 }
 

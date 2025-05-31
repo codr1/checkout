@@ -1,84 +1,8 @@
 package checkout
 
-import (
-	"checkout/templates/pos" // For FormatPrice
-	"fmt"
-)
-
 // TerminalProcessingDisplay shows a message while terminal payment is processing
-// and initiates polling.
+// Now uses the unified terminal payment container
 templ TerminalProcessingDisplay(paymentIntentID, readerID string, totalAmount float64, customerEmail string) {
-	<div class="terminal-processing-container" id="terminal-payment-status-container">
-		<h3>Processing Payment on Terminal</h3>
-		<p>Please complete the transaction on the payment terminal.</p>
-		<p>Total Amount: <strong>{ pos.FormatPrice(totalAmount) }</strong></p>
-		if customerEmail != "" {
-			<p>Email for receipt: <strong>{ customerEmail }</strong></p>
-		}
-		<div class="loading-spinner-container">
-			<div class="loading-spinner"></div>
-		</div>
-
-		<input type="hidden" name="payment_intent_id" id="payment_intent_id" value={ paymentIntentID }/>
-		<input type="hidden" name="reader_id" id="reader_id" value={ readerID }/>
-
-		<!-- Status div with polling for terminal payment -->
-		<div id="terminal-payment-status-details"
-			hx-get={ fmt.Sprintf("/check-terminal-payment-status?payment_intent_id=%s&reader_id=%s", paymentIntentID, readerID) }
-			hx-trigger="load, every 2s"
-			hx-swap="innerHTML">
-			<p>Initializing...</p>
-		</div>
-
-		<!-- Auto-expiration trigger for terminal payment -->
-		<div
-			class="hidden-action-trigger"
-			hx-post="/expire-terminal-payment"
-			hx-include="#payment_intent_id, #reader_id" 
-			hx-target="#modal-content"                 
-			hx-swap="innerHTML"
-			hx-trigger="load delay:121s"
-		></div>
-		// ~2 minutes + 1s buffer (comment moved)
-
-		<div class="modal-footer">
-			<button
-				type="button"
-				class="cancel-btn"
-				hx-post="/cancel-terminal-payment"
-				hx-include="#payment_intent_id, #reader_id" 
-				hx-target="#modal-content"                 
-				hx-swap="innerHTML"
-			>
-				Cancel Payment
-			</button>
-		</div>
-	</div>
-	<style>
-		.loading-spinner-container {
-			display: flex;
-			justify-content: center;
-			align-items: center;
-			margin: 20px 0;
-		}
-		.loading-spinner {
-			border: 4px solid #f3f3f3; /* Light grey */
-			border-top: 4px solid #3498db; /* Blue */
-			border-radius: 50%;
-			width: 30px;
-			height: 30px;
-			animation: spin 1s linear infinite;
-		}
-		@keyframes spin {
-			0% { transform: rotate(0deg); }
-			100% { transform: rotate(360deg); }
-		}
-		.hidden-action-trigger {
-			display: none;
-		}
-		.terminal-processing-info p {
-			margin: 5px 0;
-		}
-	</style>
+	@TerminalPaymentContainer(paymentIntentID, readerID, totalAmount, customerEmail)
 }
 

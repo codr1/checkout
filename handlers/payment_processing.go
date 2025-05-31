@@ -1,0 +1,230 @@
+package handlers
+
+import (
+	"fmt"
+	"log"
+	"net/http"
+	"strings"
+
+	"github.com/a-h/templ"
+	"github.com/stripe/stripe-go/v74"
+	"github.com/stripe/stripe-go/v74/paymentintent"
+
+	"checkout/services"
+	"checkout/templates"
+	"checkout/templates/checkout"
+)
+
+// Modal Helper Functions - Generic modal rendering utilities
+// These functions eliminate the repeated HTMX modal pattern found throughout the payment handlers
+
+// renderModal renders any templ component in a modal with proper HTMX headers
+// This is the core abstraction that eliminates 15+ instances of duplicated modal code
+func renderModal(w http.ResponseWriter, r *http.Request, component templ.Component, additionalTriggers ...string) error {
+	// Set the standard HTMX headers for modal display
+	w.Header().Set("HX-Retarget", "#modal-content")   // Target the modal content div
+	w.Header().Set("HX-Reswap", "innerHTML")          // Replace content inside the div
+	
+	// Handle different trigger patterns - simple vs complex triggers
+	trigger := `"showModal"`
+	if len(additionalTriggers) > 0 {
+		// Complex trigger: {"showModal": true, "cartUpdated": true, ...}
+		triggers := append([]string{`"showModal": true`}, additionalTriggers...)
+		trigger = "{" + strings.Join(triggers, ", ") + "}"
+	} else {
+		// Simple trigger: "showModal"
+		trigger = `"showModal"`
+	}
+	w.Header().Set("HX-Trigger", trigger)
+	
+	w.WriteHeader(http.StatusOK)
+	return component.Render(r.Context(), w)
+}
+
+// renderErrorModal - Specialized helper for error cases
+// Replaces the common pattern of showing PaymentDeclinedModal with error messages
+func renderErrorModal(w http.ResponseWriter, r *http.Request, message, id string) error {
+	log.Printf("Rendering error modal: %s (ID: %s)", message, id)
+	return renderModal(w, r, checkout.PaymentDeclinedModal(message, id))
+}
+
+// renderSuccessModal - Specialized helper for success cases  
+// Replaces the common pattern of showing success modals with cart updates
+func renderSuccessModal(w http.ResponseWriter, r *http.Request, paymentID string, hasEmail bool) error {
+	log.Printf("Rendering success modal for payment: %s", paymentID)
+	return renderModal(w, r, checkout.PaymentSuccess(paymentID, hasEmail), `"cartUpdated": true`)
+}
+
+// renderInfoModal - Specialized helper for informational modals
+// For cases where we need to show information without error/success semantics
+func renderInfoModal(w http.ResponseWriter, r *http.Request, component templ.Component) error {
+	return renderModal(w, r, component)
+}
+
+// ProcessPaymentHandler handles payment processing
+func ProcessPaymentHandler(w http.ResponseWriter, r *http.Request) {
+	if len(services.AppState.CurrentCart) == 0 {
+		w.Header().Set("HX-Trigger", `{"showToast": "Cart is empty"}`)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Error parsing form", http.StatusBadRequest)
+		return
+	}
+
+	email := r.FormValue("email")
+	paymentMethod := r.FormValue("payment_method")
+
+	// Calculate cart summary with taxes
+	summary, err := services.CalculateCartSummary()
+	if err != nil {
+		log.Printf("Error calculating cart summary: %v", err)
+
+		// Send sanitized error message and set response headers in one line
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("HX-Trigger", fmt.Sprintf(`{"showToast": %q}`, "Error calculating taxes. Please try again."))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	// Create a payment intent with appropriate payment method
+	params := &stripe.PaymentIntentParams{
+		Amount:        stripe.Int64(int64(summary.Total * 100)), // Convert to cents
+		Currency:      stripe.String("usd"),
+		CaptureMethod: stripe.String("automatic"),
+	}
+
+	// Configure payment method types based on the payment method
+	switch paymentMethod {
+	case "terminal":
+		params.PaymentMethodTypes = []*string{
+			stripe.String("card_present"),
+		}
+	case "manual":
+		params.PaymentMethodTypes = []*string{
+			stripe.String("card"),
+		}
+		// Additional fields for manual card entry would be processed here
+	case "qr":
+		params.PaymentMethodTypes = []*string{
+			stripe.String("card"),
+		}
+		// QR code specific configuration would go here
+	default:
+		params.PaymentMethodTypes = []*string{
+			stripe.String("card_present"),
+		}
+	}
+
+	// Add receipt email if provided
+	if email != "" {
+		params.ReceiptEmail = stripe.String(email)
+	}
+
+	intent, err := paymentintent.New(params)
+	if err != nil {
+		log.Printf("Error creating payment intent: %v", err)
+		w.Header().Set("HX-Trigger", `{"showToast": "Error processing payment"}`)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	var paymentSuccess bool
+
+	// Process payment based on method
+	switch paymentMethod {
+	case "terminal":
+		// Delegate all terminal processing to payment_terminal.go
+		result := ProcessTerminalPayment(w, r, intent, email, summary)
+		if result.ShouldStop {
+			if result.PaymentSuccess {
+				paymentSuccess = true
+				if result.UpdatedIntent != nil {
+					intent = result.UpdatedIntent // Use updated intent from terminal processing
+				}
+			}
+			if !result.Success {
+				return // Terminal processing handled the response
+			}
+		}
+
+	case "manual":
+		// Manual card processing - this would typically involve a form for card details
+		// For now, we'll redirect to the manual card form
+		if renderErr := renderInfoModal(w, r, checkout.ManualCardForm(intent.ID)); renderErr != nil {
+			log.Printf("Error rendering manual card form: %v", renderErr)
+		}
+		return
+
+	case "qr":
+		// QR code payment processing is handled in payment_qr.go
+		// This should redirect to QR code generation
+		http.Redirect(
+			w,
+			r,
+			fmt.Sprintf("/generate-qr-code?intent_id=%s&email=%s", intent.ID, email),
+			http.StatusSeeOther,
+		)
+		return
+
+	default:
+		w.Header().Set("HX-Trigger", `{"showToast": "Invalid payment method"}`)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	// Handle successful payment (terminal immediate success)
+	if paymentSuccess {
+		// Save transaction using the unified event logger
+		GlobalPaymentEventLogger.LogPaymentEvent(intent.ID, PaymentEventSuccess, paymentMethod, services.AppState.CurrentCart, summary, email)
+
+		// Clear cart
+		services.AppState.CurrentCart = []templates.Service{}
+
+		// Show success modal
+		if renderErr := renderSuccessModal(w, r, intent.ID, email != ""); renderErr != nil {
+			log.Printf("Error rendering payment success modal: %v", renderErr)
+		}
+	}
+}
+
+// ReceiptInfoHandler handles receipt information updates
+func ReceiptInfoHandler(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Error parsing form", http.StatusBadRequest)
+		return
+	}
+
+	email := r.FormValue("email")
+	phone := r.FormValue("phone")
+
+	// Store receipt info for the session
+	// In a real app, you might want to associate this with a specific transaction
+	log.Printf("Receipt info updated: email=%s, phone=%s", email, phone)
+
+	// Return success response
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Receipt information updated"))
+}
+
+// State management utilities
+
+// ClearPaymentStates clears all payment-related state
+// ClearPaymentStates clears all payment-related state
+func ClearPaymentStates() {
+	GlobalPaymentStateManager.ClearAll()
+	log.Println("All payment states cleared")
+}
+
+// ClearExpiredPaymentStates removes expired payment states
+func ClearExpiredPaymentStates() {
+	GlobalPaymentStateManager.CleanupExpired()
+	log.Println("Expired payment states cleared")
+}
+
+// GetActivePaymentStatesCount returns the number of active payment states
+func GetActivePaymentStatesCount() (int, int) {
+	return GlobalPaymentStateManager.GetActiveCountByType()
+}

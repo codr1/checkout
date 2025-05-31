@@ -156,8 +156,9 @@ func SafeStrPtr[T any, R any](ptr *T, fieldGetter func(*T) R) string {
 
 // PaymentLinkStatus represents status of a payment link
 type PaymentLinkStatus struct {
-	Active    bool
-	Completed bool
+	Active        bool
+	Completed     bool
+	CustomerEmail string
 }
 
 // CreatePaymentLink creates a payment link for the current cart
@@ -255,15 +256,20 @@ func CheckPaymentLinkStatus(paymentLinkID string) (PaymentLinkStatus, error) {
 	params := &stripe.CheckoutSessionListParams{}
 	params.PaymentLink = stripe.String(paymentLinkID)
 
-	// Check for completed checkout sessions
+	// Check for completed checkout sessions and extract customer email
 	i := session.List(params)
 	hasCompletedPayment := false
+	var customerEmail string
 
 	// Check if we find any completed checkout sessions for this payment link
 	for i.Next() {
 		s := i.CheckoutSession()
 		if s.Status == "complete" {
 			hasCompletedPayment = true
+			// Extract customer email from the checkout session
+			if s.CustomerDetails != nil && s.CustomerDetails.Email != "" {
+				customerEmail = s.CustomerDetails.Email
+			}
 			break
 		}
 	}
@@ -274,7 +280,8 @@ func CheckPaymentLinkStatus(paymentLinkID string) (PaymentLinkStatus, error) {
 
 	// Return the status
 	return PaymentLinkStatus{
-		Active:    pl.Active,
-		Completed: hasCompletedPayment,
+		Active:        pl.Active,
+		Completed:     hasCompletedPayment,
+		CustomerEmail: customerEmail,
 	}, nil
 }
