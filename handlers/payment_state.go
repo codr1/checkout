@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"checkout/config"
 	"checkout/services"
 	"checkout/templates"
 )
@@ -60,7 +61,7 @@ func (psm *PaymentStateManager) CleanupExpired() {
 	
 	for id, state := range psm.states {
 		// Use unified timeout for all payment types
-		if state.IsExpired(PAYMENT_TIMEOUT) {
+		if state.IsExpired(config.PaymentTimeout) {
 			delete(psm.states, id)
 		}
 	}

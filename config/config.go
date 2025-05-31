@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"checkout/templates"
 )
@@ -17,6 +18,58 @@ const (
 	DefaultDataDir         = "./data"
 	DefaultTransactionsDir = "./data/transactions"
 )
+
+// Payment configuration constants - consolidated from handlers/payment_config.go
+const (
+	// Polling intervals
+	PaymentPollingInterval = "2s"
+	
+	// Timeout durations - unified for all payment types  
+	// Backend timeout for progress calculations and polling logic
+	PaymentTimeout = 120 * time.Second
+	
+	// Frontend HTMX auto-expire delay (same as timeout for consistency)
+	// This acts as a safety net if browser closes or polling stops
+	PaymentExpireDelay = "120s"
+	
+	// Polling endpoints
+	QRPollEndpoint      = "/check-paymentlink-status"
+	TerminalPollEndpoint = "/check-terminal-payment-status"
+	
+	// Expiration endpoints
+	QRExpireEndpoint      = "/expire-payment-link"
+	TerminalExpireEndpoint = "/expire-terminal-payment"
+	
+	// Cancel endpoints
+	QRCancelEndpoint      = "/cancel-payment-link"
+	TerminalCancelEndpoint = "/cancel-terminal-payment"
+)
+
+// PaymentProgressMessages provides consistent status messages
+var PaymentProgressMessages = map[string]map[string]string{
+	"qr": {
+		"default":     "Waiting for QR code scan...",
+		"processing":  "Processing QR payment...",
+		"scanning":    "Please scan the QR code with your camera app",
+	},
+	"terminal": {
+		"default":     "Processing on terminal...",
+		"processing":  "Please complete the transaction on the payment terminal",
+		"waiting":     "Waiting for terminal interaction...",
+		"receipt":     "Please take your receipt from the terminal",
+	},
+}
+
+// GetPaymentMessage retrieves the appropriate message for a payment type and status
+func GetPaymentMessage(paymentType, status string) string {
+	if messages, exists := PaymentProgressMessages[paymentType]; exists {
+		if message, exists := messages[status]; exists {
+			return message
+		}
+		return messages["default"]
+	}
+	return "Processing payment..."
+}
 
 // Config holds the application configuration
 var Config templates.AppConfig

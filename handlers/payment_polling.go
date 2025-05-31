@@ -12,6 +12,7 @@ import (
 	"github.com/stripe/stripe-go/v74/paymentlink"
 	"github.com/stripe/stripe-go/v74/terminal/reader"
 
+	"checkout/config"
 	"checkout/services"
 	"checkout/templates"
 	"checkout/templates/checkout"
@@ -43,7 +44,7 @@ type ProgressInfo struct {
 }
 
 // Use the centralized configuration constant
-const PAYMENT_POLLING_TIMEOUT = PAYMENT_TIMEOUT
+const PAYMENT_POLLING_TIMEOUT = config.PaymentTimeout
 
 // PaymentProgressOptions holds options for payment progress display
 type PaymentProgressOptions struct {
@@ -69,7 +70,7 @@ func createPaymentProgressComponent(paymentID string, progress ProgressInfo, pay
 // Now returns raw HTML that templates can embed
 func createPaymentProgressComponentWithOptions(opts PaymentProgressOptions) templ.Component {
 	// Determine the status message
-	statusMessage := GetPaymentMessage(opts.PaymentType, "default")
+	statusMessage := config.GetPaymentMessage(opts.PaymentType, "default")
 	if opts.StatusMessage != "" {
 		statusMessage = opts.StatusMessage
 	}

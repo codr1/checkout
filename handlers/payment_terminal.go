@@ -11,6 +11,7 @@ import (
 	"github.com/stripe/stripe-go/v74/paymentintent"
 	"github.com/stripe/stripe-go/v74/terminal/reader"
 
+	"checkout/config"
 	"checkout/services"
 	"checkout/templates"
 	"checkout/templates/checkout"
@@ -227,7 +228,7 @@ func handleTerminalInProgress(w http.ResponseWriter, r *http.Request, intent *st
 	// Render progress modal that will initiate polling
 	// Use our unified progress component
 	progress := ProgressInfo{
-		SecondsRemaining: int(PAYMENT_TIMEOUT.Seconds()),
+		SecondsRemaining: int(config.PaymentTimeout.Seconds()),
 		ProgressWidth:    0.0, // Start at 0% progress
 		Elapsed:          0,
 	}

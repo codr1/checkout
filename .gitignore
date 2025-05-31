@@ -1,6 +1,9 @@
 # IDE files
 .idea/
 .vscode/
+*.swp
+*.swo
+*~
 
 # Compiled Go files
 *.exe
@@ -8,6 +11,8 @@
 *.dll
 *.so
 *.dylib
+checkout
+main
 
 # Test binary, built with `go test -c`
 *.test
@@ -25,8 +30,27 @@ data/config.json
 # Transaction files
 data/transactions/
 
-# Generated Go templating files
+# Generated Go templating files (templ)
 *_templ.go
 
+# Build artifacts
+dist/
+build/
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# Logs
+*.log
+logs/
+
+# Development and refactoring docs
 REFACTORING_SUMMARY.md
 Session.vim
+TODO.md
+NOTES.md
+
+# Executable
+checkout
