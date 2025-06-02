@@ -350,6 +350,52 @@ input[type="tel"] {
   color: #333;
 }
 
+/* Receipt success state */
+.receipt-success {
+  margin-top: 15px;
+  padding: 20px;
+  background-color: #d4edda;
+  border: 1px solid #c3e6cb;
+  border-radius: 5px;
+  color: #155724;
+  text-align: center;
+}
+
+.receipt-success h4 {
+  margin-top: 0;
+  margin-bottom: 10px;
+  color: #155724;
+}
+
+.receipt-success p {
+  margin-bottom: 0;
+  font-size: 16px;
+}
+
+/* Receipt error state - inline error message */
+.receipt-form .error-message {
+  background-color: #f44336;
+  color: white;
+  padding: 10px;
+  margin-bottom: 15px;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.receipt-form .error-message strong {
+  font-weight: bold;
+}
+
+/* Skip receipt button styling */
+.skip-btn {
+  background-color: #6c757d !important;
+  color: white;
+}
+
+.skip-btn:hover {
+  background-color: #5a6268 !important;
+}
+
 /* Button variants */
 .modal-content .close-btn,
 .modal-content .retry-btn {

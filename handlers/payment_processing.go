@@ -20,23 +20,28 @@ import (
 
 // renderModal renders any templ component in a modal with proper HTMX headers
 // This is the core abstraction that eliminates 15+ instances of duplicated modal code
-func renderModal(w http.ResponseWriter, r *http.Request, component templ.Component, additionalTriggers ...string) error {
+func renderModal(
+	w http.ResponseWriter,
+	r *http.Request,
+	component templ.Component,
+	additionalTriggers ...string,
+) error {
 	// Set the standard HTMX headers for modal display
-	w.Header().Set("HX-Retarget", "#modal-content")   // Target the modal content div
-	w.Header().Set("HX-Reswap", "innerHTML")          // Replace content inside the div
-	
+	w.Header().Set("HX-Retarget", "#modal-content") // Target the modal content div
+	w.Header().Set("HX-Reswap", "innerHTML")        // Replace content inside the div
+
 	// Handle different trigger patterns - simple vs complex triggers
-	trigger := `"showModal"`
+	trigger := `showModal`
 	if len(additionalTriggers) > 0 {
 		// Complex trigger: {"showModal": true, "cartUpdated": true, ...}
 		triggers := append([]string{`"showModal": true`}, additionalTriggers...)
 		trigger = "{" + strings.Join(triggers, ", ") + "}"
 	} else {
-		// Simple trigger: "showModal"
-		trigger = `"showModal"`
+		// Simple trigger: showModal (no quotes for simple triggers)
+		trigger = `showModal`
 	}
 	w.Header().Set("HX-Trigger", trigger)
-	
+
 	w.WriteHeader(http.StatusOK)
 	return component.Render(r.Context(), w)
 }
@@ -48,7 +53,7 @@ func renderErrorModal(w http.ResponseWriter, r *http.Request, message, id string
 	return renderModal(w, r, checkout.PaymentDeclinedModal(message, id))
 }
 
-// renderSuccessModal - Specialized helper for success cases  
+// renderSuccessModal - Specialized helper for success cases
 // Replaces the common pattern of showing success modals with cart updates
 func renderSuccessModal(w http.ResponseWriter, r *http.Request, paymentID string, hasEmail bool) error {
 	log.Printf("Rendering success modal for payment: %s", paymentID)
@@ -178,7 +183,14 @@ func ProcessPaymentHandler(w http.ResponseWriter, r *http.Request) {
 	// Handle successful payment (terminal immediate success)
 	if paymentSuccess {
 		// Save transaction using the unified event logger
-		GlobalPaymentEventLogger.LogPaymentEvent(intent.ID, PaymentEventSuccess, paymentMethod, services.AppState.CurrentCart, summary, email)
+		GlobalPaymentEventLogger.LogPaymentEvent(
+			intent.ID,
+			PaymentEventSuccess,
+			paymentMethod,
+			services.AppState.CurrentCart,
+			summary,
+			email,
+		)
 
 		// Clear cart
 		services.AppState.CurrentCart = []templates.Service{}
@@ -190,23 +202,136 @@ func ProcessPaymentHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// ReceiptInfoHandler handles receipt information updates
+// ReceiptInfoHandler handles receipt information updates and sending
 func ReceiptInfoHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Error parsing form", http.StatusBadRequest)
 		return
 	}
 
-	email := r.FormValue("email")
-	phone := r.FormValue("phone")
+	confirmationCode := r.FormValue("confirmation_code")
+	email := r.FormValue("receipt_email")
+	phone := r.FormValue("receipt_phone")
 
-	// Store receipt info for the session
-	// In a real app, you might want to associate this with a specific transaction
-	log.Printf("Receipt info updated: email=%s, phone=%s", email, phone)
+	// Validate that at least one contact method is provided
+	if email == "" && phone == "" {
+		if err := renderReceiptError(w, r, "Please provide either an email address or phone number.", confirmationCode); err != nil {
+			log.Printf("Error rendering receipt error: %v", err)
+		}
+		return
+	}
 
-	// Return success response
+	// Simulate receipt sending (replace with actual email/SMS service)
+	var sentMethod string
+	var sendError error
+
+	if email != "" {
+		// Send email receipt
+		sendError = sendEmailReceipt(confirmationCode, email)
+		if sendError == nil {
+			sentMethod = "email"
+		}
+	} else if phone != "" {
+		// Send SMS receipt
+		sendError = sendSMSReceipt(confirmationCode, phone)
+		if sendError == nil {
+			sentMethod = "phone"
+		}
+	}
+
+	// Handle the result
+	if sendError != nil {
+		log.Printf("Error sending receipt: %v", sendError)
+		if err := renderReceiptError(w, r, "Failed to send receipt. Please check your contact information and try again.", confirmationCode); err != nil {
+			log.Printf("Error rendering receipt error: %v", err)
+		}
+		return
+	}
+
+	// Success - render success component
+	log.Printf("Receipt sent successfully via %s for transaction %s", sentMethod, confirmationCode)
+	if err := renderReceiptSuccess(w, r, sentMethod); err != nil {
+		log.Printf("Error rendering receipt success: %v", err)
+	}
+}
+
+// sendEmailReceipt simulates sending an email receipt
+func sendEmailReceipt(confirmationCode, email string) error {
+	// TODO: Replace with actual email service (SendGrid, AWS SES, etc.)
+	log.Printf("Sending email receipt for transaction %s to %s", confirmationCode, email)
+
+	// Simulate potential failure for testing (remove this in production)
+	// Fail if email contains "fail" for demonstration purposes
+	if strings.Contains(strings.ToLower(email), "fail") {
+		return fmt.Errorf("simulated email sending failure")
+	}
+	
+	// For now, always succeed for demonstration
+	return nil
+}
+
+// sendSMSReceipt simulates sending an SMS receipt
+func sendSMSReceipt(confirmationCode, phone string) error {
+	// TODO: Replace with actual SMS service (Twilio, AWS SNS, etc.)
+	log.Printf("Sending SMS receipt for transaction %s to %s", confirmationCode, phone)
+
+	// Simulate potential failure for testing (remove this in production)
+	// Fail if phone contains "fail" for demonstration purposes
+	if strings.Contains(strings.ToLower(phone), "fail") {
+		return fmt.Errorf("simulated SMS sending failure")
+	}
+	
+	// For now, always succeed for demonstration
+	return nil
+}
+
+// renderReceiptSuccess renders the receipt success component
+func renderReceiptSuccess(w http.ResponseWriter, r *http.Request, method string) error {
+	// Create a simple success component inline since we can't access the template file
+	successHTML := fmt.Sprintf(`
+		<div class="receipt-success" id="receipt-form-container">
+			<h4>Receipt Sent!</h4>
+			<p>Your receipt has been sent to the %s you provided.</p>
+		</div>
+	`, method)
+
+	w.Header().Set("Content-Type", "text/html")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Receipt information updated"))
+	w.Write([]byte(successHTML))
+	return nil
+}
+
+// renderReceiptError renders the receipt error component  
+func renderReceiptError(w http.ResponseWriter, r *http.Request, errorMessage, confirmationCode string) error {
+	// Show error message but preserve the original form - don't replace everything
+	errorHTML := fmt.Sprintf(`
+		<div class="receipt-form" id="receipt-form-container">
+			<div class="error-message" style="background-color: #f44336; color: white; padding: 10px; margin-bottom: 15px; border-radius: 4px;">
+				<strong>Receipt Sending Failed:</strong> %s
+			</div>
+			<h4>Would you like to receive a receipt?</h4>
+			<form hx-post="/update-receipt-info" hx-include="[name='confirmation_code']" hx-target="#receipt-form-container" hx-swap="innerHTML">
+				<input type="hidden" name="confirmation_code" value="%s" />
+				<div>
+					<label for="receipt_email">Email:</label>
+					<input type="email" id="receipt_email" name="receipt_email" placeholder="your@email.com" value="%s" />
+				</div>
+				<div>
+					<label for="receipt_phone">Phone Number:</label>
+					<input type="tel" id="receipt_phone" name="receipt_phone" placeholder="(123) 456-7890" value="%s" />
+				</div>
+				<div style="display: flex; gap: 10px; margin-top: 15px;">
+					<button type="submit">Try Again</button>
+					<button type="button" class="skip-btn" hx-post="/close-modal" hx-swap="none" style="background-color: #6c757d;">Skip Receipt</button>
+				</div>
+			</form>
+		</div>
+	`, errorMessage, confirmationCode, r.FormValue("receipt_email"), r.FormValue("receipt_phone"))
+
+	w.Header().Set("Content-Type", "text/html")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(errorHTML))
+	return nil
 }
 
 // State management utilities

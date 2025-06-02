@@ -1,137 +1,111 @@
 package checkout
 
-// Manual Card Entry Form
 templ ManualCardForm(stripePublicKey string) {
 	<div class="manual-card-form" data-stripe-key={ stripePublicKey }>
 		<h3>Manual Card Entry</h3>
-		<form id="payment-form" class="card-form">
+		
+		<!-- HTMX form that submits payment method ID -->
+		<form id="payment-form" 
+			hx-post="/manual-card-form" 
+			hx-target="#modal-content" 
+			hx-swap="innerHTML"
+			hx-indicator="#submit-payment">
+			
+			<!-- Stripe Elements container (minimal JS required for security) -->
 			<div>
-				<label for="card_number">Card Number:</label>
-				<input 
-					type="text" 
-					id="card_number" 
-					name="card_number" 
-					placeholder="1234 5678 9012 3456" 
-					maxlength="19" 
-					oninput="formatCardNumber(this)" 
-					required
-				/>
-				<span id="card-type"></span>
+				<label for="card-element">Card Details:</label>
+				<div id="card-element" class="stripe-element">
+					<!-- Stripe Elements mounts here -->
+				</div>
 			</div>
 			
-			<div>
-				<label for="expiry">Expiry (MM/YY):</label>
-				<input 
-					type="text" 
-					id="expiry" 
-					name="expiry" 
-					placeholder="MM/YY" 
-					maxlength="5" 
-					oninput="formatExpiry(this)" 
-					required
-				/>
-			</div>
-			
-			<div>
-				<label for="cvv">CVV:</label>
-				<input 
-					type="text" 
-					id="cvv" 
-					name="cvv" 
-					placeholder="123" 
-					maxlength="4" 
-					oninput="validateNumericInput(this)" 
-					required
-				/>
-			</div>
-			
+			<!-- Regular HTML inputs (HTMX-friendly) -->
 			<div>
 				<label for="cardholder">Cardholder Name:</label>
-				<input 
-					type="text" 
-					id="cardholder" 
-					name="cardholder" 
-					placeholder="John Doe" 
-					required
-				/>
+				<input type="text" id="cardholder" name="cardholder" placeholder="John Doe" required/>
 			</div>
 			
-			<div id="card-errors" class="card-errors" role="alert"></div>
-			<input type="hidden" name="payment_method" value="manual"/>
-			<input type="hidden" id="payment_token" name="payment_token" value=""/>
+			<div>
+				<label for="email">Email (optional):</label>
+				<input type="email" id="email" name="email" placeholder="customer@example.com"/>
+			</div>
 			
+			<!-- Error display -->
+			<div id="card-errors" class="card-errors" role="alert"></div>
+			
+			<!-- Hidden fields for HTMX submission -->
+			<input type="hidden" name="payment_method" value="manual"/>
+			<input type="hidden" id="payment_method_id" name="payment_method_id" value=""/>
+			
+			<!-- HTMX-friendly buttons -->
 			<div class="button-group">
-				<button 
-					type="button" 
-					class="cancel-btn"
-					hx-post="/close-modal"
-					hx-target="body"
-					hx-trigger="click"
-					hx-swap="none"
-				>
+				<button type="button" class="cancel-btn" 
+					hx-post="/close-modal" 
+					hx-swap="none">
 					Cancel
 				</button>
-				
-				<button type="button" id="submit-payment" class="checkout-btn">Process Card Payment</button>
+				<button type="button" id="submit-payment" class="checkout-btn">
+					<span class="htmx-indicator">Processing...</span>
+					Process Payment
+				</button>
 			</div>
 		</form>
 		
+		<!-- Minimal Stripe JS (only what's absolutely required) -->
 		<script>
-			// This script executes immediately when the modal appears
 			(function() {
-				// Initialize Stripe with the public key from data attribute
-				var stripeKey = document.querySelector('.manual-card-form').dataset.stripeKey;
-				var stripe = Stripe(stripeKey);
+				var stripe = Stripe(document.querySelector('.manual-card-form').dataset.stripeKey);
+				var elements = stripe.elements();
+				var cardElement = elements.create('card');
+				cardElement.mount('#card-element');
 				
-				// Attach click handler to submit button
-				var submitButton = document.getElementById('submit-payment');
-				
-				submitButton.addEventListener('click', function(e) {
+				// Minimal JS: only handle secure card tokenization
+				document.getElementById('submit-payment').onclick = function(e) {
 					e.preventDefault();
-					console.log("Payment button clicked");
 					
-					// Get the form data
-					var cardNumber = document.getElementById('card_number').value.replace(/\s/g, '');
-					var expiry = document.getElementById('expiry').value.split('/');
-					var expMonth = expiry[0];
-					var expYear = '20' + expiry[1];
-					var cvv = document.getElementById('cvv').value;
-					var cardholder = document.getElementById('cardholder').value;
-					
-									// Create a payment method (modern Stripe approach)
-									console.log("Creating Stripe payment method...");
-									stripe.createPaymentMethod({
-										type: 'card',
-										card: {
-											number: cardNumber,
-											exp_month: expMonth,
-											exp_year: expYear,
-											cvc: cvv,
-										},
-										billing_details: {
-											name: cardholder
-										}
+					stripe.createPaymentMethod({
+						type: 'card',
+						card: cardElement,
+						billing_details: { name: document.getElementById('cardholder').value }
 					}).then(function(result) {
 						if (result.error) {
-							// Display error
-							console.error("Stripe error:", result.error.message);
 							document.getElementById('card-errors').textContent = result.error.message;
 						} else {
-											// Set the payment method ID and submit the form
-											console.log("Payment method created:", result.paymentMethod.id);
-											document.getElementById('payment_token').value = result.paymentMethod.id;
-							
-							// Submit form with HTMX
-							console.log("Submitting payment form...");
-							htmx.ajax('POST', '/process-payment', {
-								source: document.getElementById('payment-form'),
-								swap: 'none'
-							});
+							// Set payment method ID and let HTMX handle the rest
+							document.getElementById('payment_method_id').value = result.paymentMethod.id;
+							htmx.trigger('#payment-form', 'submit');
 						}
 					});
+				};
+				
+				// Real-time validation
+				cardElement.on('change', function(event) {
+					document.getElementById('card-errors').textContent = event.error ? event.error.message : '';
 				});
 			})();
 		</script>
+		
+		<style>
+			.stripe-element {
+				padding: 10px;
+				border: 1px solid #ccc;
+				border-radius: 4px;
+				margin: 10px 0;
+			}
+			.card-errors {
+				color: #fa755a;
+				margin: 10px 0;
+			}
+			.htmx-indicator {
+				display: none;
+			}
+			.htmx-request .htmx-indicator {
+				display: inline;
+			}
+			.htmx-request #submit-payment {
+				opacity: 0.6;
+				pointer-events: none;
+			}
+		</style>
 	</div>
 }
-

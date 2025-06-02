@@ -11,13 +11,20 @@ templ Form() {
 			</div>
 			
 			<div class="payment-methods">
-				<button type="submit" class="checkout-btn" id="checkout-btn" name="payment_method" value="terminal">Process Payment with Terminal</button>
+				<button type="submit" class="checkout-btn" id="checkout-btn" 
+                    name="payment_method" 
+                    value="terminal">
+                    Process Payment with Terminal
+                </button>
 				
-				<button type="button" class="checkout-btn" id="manual-card-btn" 
-					hx-get="/manual-card-form" 
-					hx-include="[name='email']"
-					hx-target="#modal-content" 
-					hx-swap="innerHTML">
+                <button
+                    type="button"
+                    id="manual-card-btn"
+                    class="checkout-btn"
+                    hx-get="/manual-card-form"
+                    hx-target="#modal-content"
+                    hx-swap="innerHTML"
+                    hx-trigger="click">
 					Manual Card Entry
 				</button>
 				

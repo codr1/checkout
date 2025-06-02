@@ -4,12 +4,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strconv"
 
 	"github.com/stripe/stripe-go/v74"
 	"github.com/stripe/stripe-go/v74/paymentintent"
-	"github.com/stripe/stripe-go/v74/paymentmethod"
 
+	"checkout/config"
 	"checkout/services"
 	"checkout/templates"
 	"checkout/templates/checkout"
@@ -17,94 +16,100 @@ import (
 
 // ManualCardFormHandler handles the manual card entry form
 func ManualCardFormHandler(w http.ResponseWriter, r *http.Request) {
-	// Parse payment intent ID from URL query or form
-	intentID := r.URL.Query().Get("intent_id")
-	if intentID == "" {
-		if err := r.ParseForm(); err == nil {
-			intentID = r.FormValue("intent_id")
-		}
-	}
-
-	if intentID == "" {
-		http.Error(w, "Payment Intent ID is required", http.StatusBadRequest)
+	// Check if cart is empty first (for both GET and POST)
+	if len(services.AppState.CurrentCart) == 0 {
+		// Send a toast message for empty cart
+		w.Header().Set("HX-Trigger", `{"showToast": "Cart is empty. Please add items before entering card details."}`)
+		w.WriteHeader(http.StatusBadRequest)
+		log.Printf("Cart is empty, returning 400")
 		return
 	}
 
 	// If this is a POST request, process the card payment
 	if r.Method == "POST" {
-		processManualCardPayment(w, r, intentID)
+		processManualCardPayment(w, r)
 		return
 	}
 
-	// Otherwise, render the card entry form
-	component := checkout.ManualCardForm(intentID)
-	if err := component.Render(r.Context(), w); err != nil {
+	// For GET requests, just show the card entry form
+	// Get Stripe publishable key from config
+	stripePublicKey := config.GetStripePublicKey()
+	component := checkout.ManualCardForm(stripePublicKey)
+
+	// Use renderInfoModal to set proper HTMX headers for modal display
+	if err := renderInfoModal(w, r, component); err != nil {
+		log.Printf("Error rendering manual card form modal: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
-// processManualCardPayment processes a manual card payment
-func processManualCardPayment(w http.ResponseWriter, r *http.Request, intentID string) {
+// processManualCardPayment handles the complete manual card payment flow
+func processManualCardPayment(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Error parsing form", http.StatusBadRequest)
 		return
 	}
 
-	// Extract card details from form
-	cardNumber := r.FormValue("card_number")
-	expMonth := r.FormValue("exp_month")
-	expYear := r.FormValue("exp_year")
-	cvc := r.FormValue("cvc")
+	// Extract payment method ID and other form data
+	paymentMethodID := r.FormValue("payment_method_id")
+	cardholder := r.FormValue("cardholder")
 	email := r.FormValue("email")
 
-	// Validate required fields
-	if cardNumber == "" || expMonth == "" || expYear == "" || cvc == "" {
-		renderManualPaymentError(w, r, "All card fields are required", intentID)
+	// Validate required fields (only payment method ID and cardholder are required)
+	if paymentMethodID == "" {
+		renderManualPaymentError(w, r, "Please enter your card details", "")
 		return
 	}
 
-	// Parse and validate expiration month
-	expMonthInt, err := strconv.Atoi(expMonth)
-	if err != nil || expMonthInt < 1 || expMonthInt > 12 {
-		renderManualPaymentError(w, r, "Invalid expiration month. Please enter a value between 1 and 12", intentID)
+	if cardholder == "" {
+		renderManualPaymentError(w, r, "Please enter the cardholder name", "")
 		return
 	}
 
-	// Parse and validate expiration year
-	expYearInt, err := strconv.Atoi(expYear)
-	if err != nil || expYearInt < 2024 || expYearInt > 2050 {
-		renderManualPaymentError(w, r, "Invalid expiration year. Please enter a valid year", intentID)
-		return
-	}
-
-	// Create payment method with card details
-	pmParams := &stripe.PaymentMethodParams{
-		Type: stripe.String("card"),
-		Card: &stripe.PaymentMethodCardParams{
-			Number:   stripe.String(cardNumber),
-			ExpMonth: stripe.Int64(int64(expMonthInt)),
-			ExpYear:  stripe.Int64(int64(expYearInt)),
-			CVC:      stripe.String(cvc),
-		},
-	}
-
-	pm, err := paymentmethod.New(pmParams)
+	// Calculate cart summary with taxes
+	summary, err := services.CalculateCartSummary()
 	if err != nil {
-		log.Printf("Error creating payment method: %v", err)
-		renderManualPaymentError(w, r, "Invalid card details", intentID)
+		log.Printf("Error calculating cart summary: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("HX-Trigger", fmt.Sprintf(`{"showToast": %q}`, "Error calculating taxes. Please try again."))
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
-	// Confirm the payment intent with the payment method
+	// Create a payment intent for manual card processing
+	params := &stripe.PaymentIntentParams{
+		Amount:             stripe.Int64(int64(summary.Total * 100)), // Convert to cents
+		Currency:           stripe.String("usd"),
+		CaptureMethod:      stripe.String("automatic"),
+		PaymentMethodTypes: []*string{stripe.String("card")},
+	}
+
+	// Add receipt email if provided
+	if email != "" {
+		params.ReceiptEmail = stripe.String(email)
+	}
+
+	intent, err := paymentintent.New(params)
+	if err != nil {
+		log.Printf("Error creating payment intent: %v", err)
+		w.Header().Set("HX-Trigger", `{"showToast": "Error processing payment"}`)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	intentID := intent.ID
+
+	// The payment method was already created by Stripe Elements on the frontend
+	// We just need to confirm the payment intent with the existing payment method
 	confirmParams := &stripe.PaymentIntentConfirmParams{
-		PaymentMethod: stripe.String(pm.ID),
+		PaymentMethod: stripe.String(paymentMethodID),
 	}
 
 	if email != "" {
 		confirmParams.ReceiptEmail = stripe.String(email)
 	}
 
-	intent, err := paymentintent.Confirm(intentID, confirmParams)
+	intent, err = paymentintent.Confirm(intentID, confirmParams)
 	if err != nil {
 		log.Printf("Error confirming payment intent: %v", err)
 
@@ -153,7 +158,14 @@ func handleManualPaymentSuccess(w http.ResponseWriter, r *http.Request, intent *
 	}
 
 	// Save transaction using the unified event logger
-	GlobalPaymentEventLogger.LogPaymentEvent(intent.ID, PaymentEventSuccess, "manual", services.AppState.CurrentCart, summary, email)
+	GlobalPaymentEventLogger.LogPaymentEvent(
+		intent.ID,
+		PaymentEventSuccess,
+		"manual",
+		services.AppState.CurrentCart,
+		summary,
+		email,
+	)
 
 	// Clear cart
 	services.AppState.CurrentCart = []templates.Service{}
@@ -164,12 +176,13 @@ func handleManualPaymentSuccess(w http.ResponseWriter, r *http.Request, intent *
 	}
 }
 
-// renderManualPaymentError renders an error modal for manual payment
+// renderManualPaymentError renders an error modal using the same pattern as terminal payments
 func renderManualPaymentError(w http.ResponseWriter, r *http.Request, errorMessage, intentID string) {
 	log.Printf("Manual payment error for intent %s: %s", intentID, errorMessage)
 
+	// Use the same error modal pattern as terminal payments
 	if err := renderErrorModal(w, r, errorMessage, intentID); err != nil {
-		log.Printf("Error rendering payment error modal: %v", err)
+		log.Printf("Error rendering manual payment error modal: %v", err)
 	}
 }
 

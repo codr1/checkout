@@ -1,0 +1,31 @@
+package checkout
+
+// ManualCardErrorModal displays errors for manual card entry but allows returning to the form
+templ ManualCardErrorModal(errorMessage string, intentID string) {
+	<div class="payment-error-container">
+		<h3>Payment Error</h3>
+		<p>{ errorMessage }</p>
+		if intentID != "" {
+			<p><small>Reference: { intentID }</small></p>
+		}
+		<div class="modal-footer">
+			<button
+				type="button"
+				class="close-btn"
+				hx-get="/manual-card-form"
+				hx-target="#modal-content"
+				hx-swap="innerHTML"
+			>
+				Try Again
+			</button>
+			<button
+				type="button"
+				class="cancel-btn"
+				hx-post="/close-modal"
+				hx-swap="none"
+			>
+				Cancel
+			</button>
+		</div>
+	</div>
+}

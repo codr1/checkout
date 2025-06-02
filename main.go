@@ -1,9 +1,18 @@
 package main
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"log"
+	"math/big"
+	"net"
 	"net/http"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/stripe/stripe-go/v74"
 	"github.com/stripe/stripe-go/v74/balance"
@@ -83,6 +92,57 @@ func init() {
 	log.Println("Stripe API initialized successfully")
 }
 
+// generateSelfSignedCert creates a self-signed certificate for localhost
+func generateSelfSignedCert() (tls.Certificate, error) {
+	// Generate a private key
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+
+	// Create certificate template
+	template := x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			Organization:  []string{"PicklePOS Development"},
+			Country:       []string{"US"},
+			Province:      []string{""},
+			Locality:      []string{""},
+			StreetAddress: []string{""},
+			PostalCode:    []string{""},
+		},
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(365 * 24 * time.Hour), // 1 year
+		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
+		DNSNames:     []string{"localhost"},
+	}
+
+	// Create the certificate
+	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+
+	// Create TLS certificate
+	cert := tls.Certificate{
+		Certificate: [][]byte{certDER},
+		PrivateKey:  priv,
+	}
+
+	return cert, nil
+}
+
+// shouldUseHTTPS determines if HTTPS should be used based on websiteName config
+func shouldUseHTTPS() bool {
+	websiteName := strings.TrimSpace(config.Config.WebsiteName)
+	
+	// Use HTTPS if no domain configured or domain is localhost
+	// (for local testing with Stripe.js)
+	return websiteName == "" || websiteName == "localhost"
+}
+
 func main() {
 	rootMux := http.NewServeMux()
 
@@ -148,7 +208,34 @@ func main() {
 	if port == "" {
 		port = PORT
 	}
-	log.Printf("Starting server on port %s...", port)
-	// Use rootMux as the main handler for the server
-	log.Fatal(http.ListenAndServe(":"+port, rootMux))
+
+	// Determine protocol and start appropriate server
+	if shouldUseHTTPS() {
+		log.Printf("No domain configured (websiteName: '%s') - starting HTTPS server on port %s for local testing...", config.Config.WebsiteName, port)
+		log.Printf("⚠️  You will need to accept the security warning in your browser for the self-signed certificate")
+		log.Printf("🔗 Access your application at: https://localhost:%s", port)
+		
+		// Generate self-signed certificate
+		cert, err := generateSelfSignedCert()
+		if err != nil {
+			log.Fatalf("Failed to generate self-signed certificate: %v", err)
+		}
+
+		// Create HTTPS server
+		server := &http.Server{
+			Addr:    ":" + port,
+			Handler: rootMux,
+			TLSConfig: &tls.Config{
+				Certificates: []tls.Certificate{cert},
+			},
+		}
+
+		log.Fatal(server.ListenAndServeTLS("", ""))
+	} else {
+		log.Printf("Domain configured (websiteName: '%s') - starting HTTP server on port %s for cloudflared...", config.Config.WebsiteName, port)
+		log.Printf("🔗 Expected to be accessed via cloudflared tunnel or reverse proxy")
+		log.Printf("🔗 Local HTTP access: http://localhost:%s", port)
+		
+		log.Fatal(http.ListenAndServe(":"+port, rootMux))
+	}
 }

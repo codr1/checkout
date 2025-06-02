@@ -70,9 +70,29 @@ The configuration will be stored in `./data/config.json`. You can edit this file
    go run main.go
    ```
 
-2. Access the application at `http://localhost:3000` (or the port specified in your configuration)
+2. The application automatically chooses HTTP or HTTPS based on your configuration:
 
-3. Login with the default PIN: `1234` (change this in production)
+   **For Local Development/Testing:**
+   - If `websiteName` is empty or set to "localhost" in your config
+   - Runs on **HTTPS** with self-signed certificate at `https://localhost:3000`
+   - You'll need to accept the browser security warning once
+   - Required for Stripe.js to work properly in manual card entry
+
+   **For Production with Cloudflare:**
+   - If `websiteName` is set to your domain (e.g., "mystore.example.com")
+   - Runs on **HTTP** at `http://localhost:3000`
+   - Expected to be accessed via cloudflared tunnel or reverse proxy
+   - Cloudflare handles SSL termination
+
+3. Login with the password you configured during setup
+
+### HTTPS Certificate Details
+
+When running in HTTPS mode (local development), the application:
+- Automatically generates a self-signed certificate valid for 1 year
+- Certificate includes both `localhost` and `127.0.0.1`
+- Certificate is regenerated on each startup (no persistent storage)
+- Enables proper Stripe.js functionality for manual card payments
 
 ## Directory Structure
 
