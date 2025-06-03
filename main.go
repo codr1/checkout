@@ -16,6 +16,7 @@ import (
 
 	"github.com/stripe/stripe-go/v74"
 	"github.com/stripe/stripe-go/v74/balance"
+	"github.com/stripe/stripe-go/v74/webhookendpoint"
 
 	"checkout/config"
 	"checkout/handlers"
@@ -90,6 +91,9 @@ func init() {
 	}
 
 	log.Println("Stripe API initialized successfully")
+	
+	// Set up communication strategy (polling vs webhooks)
+	registerWebhookEndpoint()
 }
 
 // generateSelfSignedCert creates a self-signed certificate for localhost
@@ -143,6 +147,68 @@ func shouldUseHTTPS() bool {
 	return websiteName == "" || websiteName == "localhost"
 }
 
+// getCommunicationStrategy determines whether to use polling or webhooks
+func getCommunicationStrategy() string {
+	websiteName := strings.TrimSpace(config.Config.WebsiteName)
+	if websiteName != "" && websiteName != "localhost" {
+		return "webhooks"
+	}
+	return "polling"
+}
+
+// registerWebhookEndpoint registers webhook endpoint with Stripe if using webhooks strategy
+func registerWebhookEndpoint() {
+	strategy := getCommunicationStrategy()
+	if strategy != "webhooks" {
+		log.Printf("[Communication] Using polling strategy (localhost/no domain)")
+		return
+	}
+
+	// Check if webhook secret is configured
+	webhookSecret := config.GetStripeWebhookSecret()
+	if webhookSecret == "" {
+		log.Printf("[Warning] Webhook strategy selected but no webhook secret configured")
+		return
+	}
+
+	// TODO: Consider persisting webhook registration to survive server restarts
+	// For now, we'll register on each startup which is acceptable for development
+
+	websiteName := config.Config.WebsiteName
+	webhookURL := "https://" + websiteName + "/stripe-webhook"
+
+	// Events we need for our POS system
+	enabledEvents := []string{
+		"payment_intent.succeeded",
+		"payment_intent.payment_failed", 
+		"payment_intent.canceled",
+		"payment_intent.requires_action",
+		"payment_link.completed",
+		"payment_link.updated",
+		"terminal.reader.action_succeeded",
+		"terminal.reader.action_failed",
+		"charge.succeeded",
+		"charge.failed",
+	}
+
+	params := &stripe.WebhookEndpointParams{
+		URL:           stripe.String(webhookURL),
+		EnabledEvents: stripe.StringSlice(enabledEvents),
+	}
+
+	result, err := webhookendpoint.New(params)
+	if err != nil {
+		log.Printf("[Error] Failed to register webhook endpoint: %v", err)
+		log.Printf("[Info] Falling back to polling mode")
+		return
+	}
+
+	log.Printf("[Communication] Using webhook strategy")
+	log.Printf("[Webhook] Registered endpoint: %s", webhookURL)
+	log.Printf("[Webhook] Endpoint ID: %s", result.ID)
+	log.Printf("[Webhook] Events: %v", enabledEvents)
+}
+
 func main() {
 	rootMux := http.NewServeMux()
 
@@ -174,6 +240,7 @@ func main() {
 	appMux.HandleFunc("/check-paymentlink-status", handlers.CheckPaymentlinkStatusHandler)
 	appMux.HandleFunc("/cancel-payment-link", handlers.CancelPaymentLinkHandler)
 	appMux.HandleFunc("/expire-payment-link", handlers.ExpirePaymentLinkHandler)
+	appMux.HandleFunc("/cancel-transaction", handlers.CancelTransactionHandler)
 	appMux.HandleFunc("/update-receipt-info", handlers.ReceiptInfoHandler)
 
 	// Terminal Payment Polling Endpoints

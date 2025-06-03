@@ -219,7 +219,27 @@ func checkQRPaymentStatus(paymentLinkID string) PaymentStatusResult {
 		return handleQRPaymentTimeout(paymentLinkID)
 	}
 
-	// Check payment status
+	// First, check webhook cache if available
+	if cachedState, found := GetCachedPaymentState(paymentLinkID, "payment_link"); found {
+		log.Printf("[QR] Using cached state for payment link: %s, Status: %s", paymentLinkID, cachedState.Status)
+		
+		// Handle cached payment completion
+		if cachedState.Status == "completed" {
+			paymentLinkStatus := services.PaymentLinkStatus{
+				Completed:     true,
+				CustomerEmail: cachedState.Metadata["customer_email"],
+			}
+			return handleQRPaymentSuccess(paymentLinkID, paymentLinkStatus)
+		}
+		
+		// Handle cached inactive/expired state
+		if cachedState.Status == "inactive" {
+			return handleQRPaymentTimeout(paymentLinkID)
+		}
+	}
+
+	// Fallback to direct Stripe API call if no cached state
+	log.Printf("[QR] No cached state found, checking Stripe API for payment link: %s", paymentLinkID)
 	paymentLinkStatus, err := services.CheckPaymentLinkStatus(paymentLinkID)
 	if err != nil {
 		log.Printf("Error checking payment link status: %v", err)
@@ -246,7 +266,6 @@ func checkQRPaymentStatus(paymentLinkID string) PaymentStatusResult {
 }
 
 // checkTerminalPaymentStatus checks terminal payment status
-// checkTerminalPaymentStatus checks terminal payment status
 func checkTerminalPaymentStatus(intentID string) PaymentStatusResult {
 	state, exists := GlobalPaymentStateManager.GetPayment(intentID)
 	if !exists {
@@ -266,7 +285,35 @@ func checkTerminalPaymentStatus(intentID string) PaymentStatusResult {
 		return handleTerminalPaymentTimeout(intentID)
 	}
 
-	// Check payment intent status
+	// First, check webhook cache if available
+	if cachedState, found := GetCachedPaymentState(intentID, "payment_intent"); found {
+		log.Printf("[Terminal] Using cached state for payment intent: %s, Status: %s", intentID, cachedState.Status)
+		
+		// Handle cached payment success
+		if cachedState.Status == "succeeded" || cachedState.Status == "charge_succeeded" {
+			// Create a mock intent object with the status we need
+			intent := &stripe.PaymentIntent{
+				ID:     intentID,
+				Status: stripe.PaymentIntentStatusSucceeded,
+			}
+			return handleTerminalPaymentSuccess(intentID, terminalState, intent)
+		}
+		
+		// Handle cached payment failures
+		if cachedState.Status == "failed" || cachedState.Status == "charge_failed" || cachedState.Status == "canceled" {
+			// Create a mock intent object with the status we need
+			intent := &stripe.PaymentIntent{
+				ID:     intentID,
+				Status: stripe.PaymentIntentStatusCanceled,
+			}
+			// Note: We can't construct LastPaymentError directly, so we'll pass the error message another way
+			// The handleTerminalPaymentFailure function will use a generic error message in this case
+			return handleTerminalPaymentFailure(intentID, intent)
+		}
+	}
+
+	// Fallback to direct Stripe API call if no cached state
+	log.Printf("[Terminal] No cached state found, checking Stripe API for payment intent: %s", intentID)
 	intent, err := paymentintent.Get(intentID, nil)
 	if err != nil {
 		log.Printf("Error fetching PaymentIntent %s: %v", intentID, err)
