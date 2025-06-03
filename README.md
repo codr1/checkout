@@ -247,6 +247,41 @@ Example tax category in config.json:
 }
 
 ## Security Considerations
+## Communication Strategy
+
+The backend automatically selects the optimal communication method with Stripe based on your domain configuration:
+
+### Polling Mode (Development)
+- **When**: No domain configured or domain is "localhost"
+- **Protocol**: HTTPS with self-signed certificate
+- **Method**: Frontend polls backend every 2s, backend polls Stripe API
+- **Benefits**: Works without external webhooks, simple setup
+
+### Webhook Mode (Production)
+- **When**: Domain is configured (not localhost/empty)
+- **Protocol**: HTTP (expects SSL termination by proxy)
+- **Method**: Frontend polls backend every 2s, backend receives Stripe webhooks
+- **Benefits**: More efficient, real-time updates, reduced API calls
+
+### Automatic Webhook Registration
+When using webhook mode, the application automatically:
+1. Registers a webhook endpoint with Stripe on startup
+2. Configures the necessary payment events
+3. Falls back to polling if registration fails
+
+### Events Handled
+- `payment_intent.*` (created, succeeded, failed, canceled, requires_action)
+- `payment_link.*` (completed, updated)
+- `terminal.reader.action_*` (succeeded, failed)
+- `charge.*` (succeeded, failed - backup confirmation)
+
+### State Caching
+- Webhook events cached for 120 seconds (matches UI timeout)
+- Automatic cleanup of expired states every 30 seconds
+- Thread-safe with RWMutex protection
+- Webhook signature verification for security
+
+## Security Considerations
 
 For production use:
 2. Consider implementing proper user authentication
