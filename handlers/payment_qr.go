@@ -182,3 +182,38 @@ func ExpirePaymentLinkHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// CancelTransactionHandler handles cancelling the entire transaction and resetting state
+func CancelTransactionHandler(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Error parsing form", http.StatusBadRequest)
+		return
+	}
+
+	paymentLinkID := r.FormValue("payment_link_id")
+	
+	// If we have a payment link ID, deactivate it in Stripe
+	if paymentLinkID != "" {
+		_, err := paymentlink.Update(paymentLinkID, &stripe.PaymentLinkParams{Active: stripe.Bool(false)})
+		if err != nil {
+			log.Printf("Error cancelling payment link during transaction cancellation: %v", err)
+			// Continue anyway - we still want to clear local state
+		} else {
+			log.Printf("Payment link %s cancelled during transaction cancellation", paymentLinkID)
+		}
+
+		// Log the cancellation using the unified event logger
+		GlobalPaymentEventLogger.LogPaymentEventQuick(paymentLinkID, PaymentEventCancelled, "qr")
+	}
+
+	// Clear all payment states and cart using unified state manager
+	GlobalPaymentStateManager.ClearAllAndClearCart()
+
+	log.Println("Transaction cancelled - cart and payment states cleared")
+
+	// Close modal and show success toast
+	w.Header().Set("Content-Type", "text/html")
+	w.Header().Set("HX-Trigger", `{"closeModal": true, "showToastSuccess": "Transaction cancelled - cart cleared", "cartUpdated": true}`)
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("")) // Empty response since we're just triggering events
+}
+

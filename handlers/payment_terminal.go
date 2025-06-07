@@ -11,7 +11,6 @@ import (
 	"github.com/stripe/stripe-go/v74/paymentintent"
 	"github.com/stripe/stripe-go/v74/terminal/reader"
 
-	"checkout/config"
 	"checkout/services"
 	"checkout/templates"
 	"checkout/templates/checkout"
@@ -45,7 +44,7 @@ func ProcessTerminalPayment(w http.ResponseWriter, r *http.Request, intent *stri
 	}
 
 	// Process payment on the terminal reader
-	processedReader, err := processPaymentOnTerminal(intent.ID, selectedReaderID)
+	processedReader, err := processPaymentOnTerminal(intent.ID, selectedReaderID, summary)
 	if err != nil {
 		log.Printf("Error commanding reader %s to process PaymentIntent %s: %v", selectedReaderID, intent.ID, err)
 		errMsg := "Error communicating with the payment terminal."
@@ -82,12 +81,24 @@ func findOnlineTerminalReader() string {
 }
 
 // processPaymentOnTerminal processes payment intent on a terminal reader
-func processPaymentOnTerminal(intentID, readerID string) (*stripe.TerminalReader, error) {
+// with tipping configuration based on business rules
+func processPaymentOnTerminal(intentID, readerID string, summary templates.CartSummary) (*stripe.TerminalReader, error) {
+	// Determine if tipping should be enabled for this transaction
+	shouldEnableTipping := services.ShouldEnableTipping(
+		summary.Total,
+		services.AppState.CurrentCart,
+		services.AppState.SelectedStripeLocation.ID,
+	)
+
 	readerParams := &stripe.TerminalReaderProcessPaymentIntentParams{
 		PaymentIntent: stripe.String(intentID),
+		ProcessConfig: &stripe.TerminalReaderProcessPaymentIntentProcessConfigParams{
+			SkipTipping: stripe.Bool(!shouldEnableTipping), // Skip tipping if business rules say no
+		},
 	}
 
-	log.Printf("Attempting to process PaymentIntent %s on reader %s", intentID, readerID)
+	log.Printf("Attempting to process PaymentIntent %s on reader %s with tipping=%v (amount=%.2f)", 
+		intentID, readerID, shouldEnableTipping, summary.Total)
 	return reader.ProcessPaymentIntent(readerID, readerParams)
 }
 
@@ -225,23 +236,13 @@ func handleTerminalInProgress(w http.ResponseWriter, r *http.Request, intent *st
 	copy(terminalState.Cart, services.AppState.CurrentCart)
 	GlobalPaymentStateManager.AddPayment(terminalState)
 
-	// Render progress modal that will initiate polling
-	// Use our unified progress component
-	progress := ProgressInfo{
-		SecondsRemaining: int(config.PaymentTimeout.Seconds()),
-		ProgressWidth:    0.0, // Start at 0% progress
-		Elapsed:          0,
-	}
-	
-	options := PaymentProgressOptions{
-		PaymentID:     intent.ID,
-		PaymentType:   "terminal",
-		Progress:      progress,
-		StatusMessage: "Processing on terminal...",
-		ReaderID:      selectedReaderID,
-		PaymentStatus: string(intent.Status),
-	}
-	component := createPaymentProgressComponentWithOptions(options)
+	// Render terminal payment container with SSE support
+	component := checkout.TerminalPaymentContainer(
+		intent.ID,
+		selectedReaderID,
+		float64(intent.Amount)/100.0, // Convert from cents to dollars
+		email,
+	)
 	if renderErr := renderInfoModal(w, r, component); renderErr != nil {
 		log.Printf("Error rendering terminal payment progress modal: %v", renderErr)
 	}
@@ -415,26 +416,4 @@ func ExpireTerminalPaymentHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Payment expired"))
 }
 
-
-// renderTerminalFailureModal handles the rendering of a failure/declined modal for terminal payments.
-func renderTerminalFailureModal(
-	w http.ResponseWriter,
-	r *http.Request,
-	paymentIntentID string,
-	declineMessage string,
-) {
-	log.Printf(
-		"Rendering terminal failure modal for PI %s. Message: %s",
-		paymentIntentID,
-		declineMessage,
-	)
-	GlobalPaymentStateManager.RemovePayment(paymentIntentID) // Clean up using paymentIntentID
-
-	if renderErr := renderErrorModal(w, r, declineMessage, paymentIntentID); renderErr != nil {
-		log.Printf("CRITICAL: Error rendering PaymentDeclinedModal for PI %s: %v", paymentIntentID, renderErr)
-		http.Error(w, "Failed to render payment decline view", http.StatusInternalServerError)
-	} else {
-		log.Printf("Successfully rendered PaymentDeclinedModal for PI %s. Polling should stop.", paymentIntentID)
-	}
-}
 

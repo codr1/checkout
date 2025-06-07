@@ -86,6 +86,15 @@ type AppConfig struct {
 
 	// Stripe Terminal
 	StripeTerminalLocationID string `json:"stripeTerminalLocationID,omitempty"` // ID of the Stripe Terminal Location (tml_...)
+
+	// Tipping Configuration
+	TippingEnabled               bool                     `json:"tippingEnabled"`               // Global tipping enable/disable
+	TippingLocationOverrides     map[string]bool          `json:"tippingLocationOverrides"`     // Per-location tipping overrides (locationID -> enabled)
+	TippingMinAmount             float64                  `json:"tippingMinAmount"`             // Minimum transaction amount to show tipping (in dollars)
+	TippingMaxAmount             float64                  `json:"tippingMaxAmount"`             // Maximum transaction amount to show tipping (0 = no limit)
+	TippingPresetPercentages     []int                    `json:"tippingPresetPercentages"`     // Preset tip percentages (e.g., [15, 18, 20, 25])
+	TippingAllowCustomAmount     bool                     `json:"tippingAllowCustomAmount"`     // Allow customers to enter custom tip amounts
+	TippingServiceCategoriesOnly []string                 `json:"tippingServiceCategoriesOnly"` // Only show tipping for specific service categories (empty = all)
 }
 
 // StripeLocation represents a Stripe Terminal Location.

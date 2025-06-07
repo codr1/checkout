@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"github.com/stripe/stripe-go/v74/webhook"
 
 	"checkout/config"
+	"checkout/services"
 )
 
 // WebhookPaymentState represents the cached state of a payment from webhooks
@@ -189,33 +191,42 @@ func StripeWebhookHandler(w http.ResponseWriter, r *http.Request) {
 
 	case "payment_intent.succeeded":
 		handlePaymentIntentSucceeded(event.Data.Raw)
+		sendSSEUpdateFromWebhook(event)
 
 	case "payment_intent.payment_failed":
 		handlePaymentIntentFailed(event.Data.Raw)
+		sendSSEUpdateFromWebhook(event)
 
 	case "payment_intent.canceled":
 		handlePaymentIntentCanceled(event.Data.Raw)
+		sendSSEUpdateFromWebhook(event)
 
 	case "payment_intent.requires_action":
 		handlePaymentIntentRequiresAction(event.Data.Raw)
+		sendSSEUpdateFromWebhook(event)
 
 	case "payment_link.completed":
 		handlePaymentLinkCompleted(event.Data.Raw)
+		sendSSEUpdateFromWebhook(event)
 
 	case "payment_link.updated":
 		handlePaymentLinkUpdated(event.Data.Raw)
 
 	case "terminal.reader.action_succeeded":
 		handleTerminalActionSucceeded(event.Data.Raw)
+		sendSSEUpdateFromWebhook(event)
 
 	case "terminal.reader.action_failed":
 		handleTerminalActionFailed(event.Data.Raw)
+		sendSSEUpdateFromWebhook(event)
 
 	case "charge.succeeded":
 		handleChargeSucceeded(event.Data.Raw)
+		sendSSEUpdateFromWebhook(event)
 
 	case "charge.failed":
 		handleChargeFailed(event.Data.Raw)
+		sendSSEUpdateFromWebhook(event)
 
 	default:
 		log.Printf("[Webhook] Unhandled event type: %s", event.Type)
@@ -468,4 +479,159 @@ func handleChargeFailed(raw json.RawMessage) {
 		setCachedPaymentState(charge.PaymentIntent.ID, "payment_intent", state)
 		log.Printf("[Webhook] Charge failed for payment intent: %s, reason: %s", charge.PaymentIntent.ID, errorMessage)
 	}
+}
+
+// sendSSEUpdateFromWebhook sends SSE updates based on webhook events
+func sendSSEUpdateFromWebhook(event stripe.Event) {
+	switch event.Type {
+	case "payment_intent.succeeded", "payment_intent.payment_failed", "payment_intent.canceled":
+		if paymentIntent := extractPaymentIntentFromEvent(event); paymentIntent != nil {
+			sendTerminalSSEUpdate(paymentIntent.ID, paymentIntent)
+		}
+	case "payment_link.completed":
+		if paymentLinkID := extractPaymentLinkIDFromEvent(event); paymentLinkID != "" {
+			sendQRSSEUpdate(paymentLinkID, "completed")
+		}
+	case "terminal.reader.action_succeeded", "terminal.reader.action_failed":
+		if actionData := extractTerminalActionFromEvent(event); actionData != nil {
+			sendTerminalActionSSEUpdate(actionData)
+		}
+	case "charge.succeeded", "charge.failed":
+		if charge := extractChargeFromEvent(event); charge != nil {
+			// Try to find associated payment intent
+			if charge.PaymentIntent != nil {
+				sendTerminalSSEUpdate(charge.PaymentIntent.ID, charge.PaymentIntent)
+			}
+		}
+	}
+}
+
+// sendTerminalSSEUpdate sends SSE update for terminal payments
+func sendTerminalSSEUpdate(intentID string, intent *stripe.PaymentIntent) {
+	state, exists := GlobalPaymentStateManager.GetPayment(intentID)
+	if !exists {
+		return
+	}
+
+	terminalState, ok := state.(*TerminalPaymentState)
+	if !ok {
+		return
+	}
+
+	var result PaymentStatusResult
+	
+	switch intent.Status {
+	case stripe.PaymentIntentStatusSucceeded:
+		result = handleTerminalPaymentSuccess(intentID, terminalState, intent)
+	case stripe.PaymentIntentStatusCanceled, stripe.PaymentIntentStatusRequiresPaymentMethod:
+		result = handleTerminalPaymentFailure(intentID, intent)
+	default:
+		// Continue with progress update
+		progress := calculateProgressInfo(state.GetStartTime(), config.PaymentTimeout)
+		options := PaymentProgressOptions{
+			PaymentID:     intentID,
+			PaymentType:   "terminal",
+			Progress:      progress,
+			StatusMessage: fmt.Sprintf("Processing... (Status: %s)", intent.Status),
+			ReaderID:      terminalState.ReaderID,
+			PaymentStatus: string(intent.Status),
+		}
+		result = PaymentStatusResult{
+			Status:     "pending",
+			Component:  createPaymentProgressComponentWithOptions(options),
+			ShouldStop: false,
+		}
+	}
+
+	if result.Component != nil {
+		GlobalSSEBroadcaster.BroadcastPaymentUpdate(intentID, result.Component)
+	}
+	
+	if result.ShouldStop {
+		GlobalSSEBroadcaster.RemoveConnection(intentID)
+	}
+}
+
+// sendQRSSEUpdate sends SSE update for QR payments
+func sendQRSSEUpdate(paymentLinkID, status string) {
+	state, exists := GlobalPaymentStateManager.GetPayment(paymentLinkID)
+	if !exists {
+		return
+	}
+
+	var result PaymentStatusResult
+	
+	switch status {
+	case "completed":
+		// Create a simple payment link status to pass to the handler
+		paymentLinkStatus := services.PaymentLinkStatus{
+			Completed:     true,
+			CustomerEmail: "", // Will be extracted from cached state if available
+		}
+		
+		// Try to get customer email from cached state
+		if cachedState, found := GetCachedPaymentState(paymentLinkID, "payment_link"); found {
+			if email, exists := cachedState.Metadata["customer_email"]; exists {
+				paymentLinkStatus.CustomerEmail = email
+			}
+		}
+		
+		result = handleQRPaymentSuccess(paymentLinkID, paymentLinkStatus)
+	default:
+		// Continue with progress update
+		progress := calculateProgressInfo(state.GetStartTime(), config.PaymentTimeout)
+		result = PaymentStatusResult{
+			Status:     "pending",
+			Component:  createPaymentProgressComponent(paymentLinkID, progress, "qr"),
+			ShouldStop: false,
+		}
+	}
+
+	if result.Component != nil {
+		GlobalSSEBroadcaster.BroadcastPaymentUpdate(paymentLinkID, result.Component)
+	}
+	
+	if result.ShouldStop {
+		GlobalSSEBroadcaster.RemoveConnection(paymentLinkID)
+	}
+}
+
+// sendTerminalActionSSEUpdate sends SSE update for terminal reader actions
+func sendTerminalActionSSEUpdate(actionData interface{}) {
+	// This would handle terminal reader action events
+	// Implementation depends on the specific action data structure
+	log.Printf("[SSE] Terminal action update: %+v", actionData)
+}
+
+// Helper functions to extract data from webhook events
+func extractPaymentIntentFromEvent(event stripe.Event) *stripe.PaymentIntent {
+	var paymentIntent stripe.PaymentIntent
+	if err := json.Unmarshal(event.Data.Raw, &paymentIntent); err != nil {
+		log.Printf("Error parsing payment intent from webhook: %v", err)
+		return nil
+	}
+	return &paymentIntent
+}
+
+func extractPaymentLinkIDFromEvent(event stripe.Event) string {
+	var paymentLink stripe.PaymentLink
+	if err := json.Unmarshal(event.Data.Raw, &paymentLink); err != nil {
+		log.Printf("Error parsing payment link from webhook: %v", err)
+		return ""
+	}
+	return paymentLink.ID
+}
+
+func extractChargeFromEvent(event stripe.Event) *stripe.Charge {
+	var charge stripe.Charge
+	if err := json.Unmarshal(event.Data.Raw, &charge); err != nil {
+		log.Printf("Error parsing charge from webhook: %v", err)
+		return nil
+	}
+	return &charge
+}
+
+func extractTerminalActionFromEvent(event stripe.Event) interface{} {
+	// This would extract terminal reader action data
+	return event.Data.Raw
 }

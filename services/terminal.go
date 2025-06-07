@@ -13,6 +13,60 @@ import (
 	"checkout/templates"
 )
 
+// ShouldEnableTipping determines if tipping should be enabled for a given transaction
+// based on the global configuration, location overrides, transaction amount, and cart contents
+func ShouldEnableTipping(transactionAmount float64, cart []templates.Service, locationID string) bool {
+	// Check if tipping is globally disabled
+	if !config.Config.TippingEnabled {
+		// Check for location-specific override that enables tipping
+		if locationOverride, exists := config.Config.TippingLocationOverrides[locationID]; exists {
+			if !locationOverride {
+				return false // Location specifically disables tipping
+			}
+			// Location enables tipping even though global is disabled
+		} else {
+			return false // Global disabled and no location override
+		}
+	} else {
+		// Global tipping is enabled, check for location-specific override that disables it
+		if locationOverride, exists := config.Config.TippingLocationOverrides[locationID]; exists && !locationOverride {
+			return false // Location specifically disables tipping
+		}
+	}
+
+	// Check minimum amount threshold
+	if config.Config.TippingMinAmount > 0 && transactionAmount < config.Config.TippingMinAmount {
+		return false
+	}
+
+	// Check maximum amount threshold (0 means no maximum)
+	if config.Config.TippingMaxAmount > 0 && transactionAmount > config.Config.TippingMaxAmount {
+		return false
+	}
+
+	// Check service category restrictions
+	if len(config.Config.TippingServiceCategoriesOnly) > 0 {
+		// Only enable tipping if at least one item in cart matches allowed categories
+		hasAllowedCategory := false
+		for _, service := range cart {
+			for _, allowedCategory := range config.Config.TippingServiceCategoriesOnly {
+				if service.Category == allowedCategory {
+					hasAllowedCategory = true
+					break
+				}
+			}
+			if hasAllowedCategory {
+				break
+			}
+		}
+		if !hasAllowedCategory {
+			return false
+		}
+	}
+
+	return true
+}
+
 // LoadStripeLocationsAndSelect fetches Stripe Terminal Locations and selects one based on config.
 // This function is expected to be called during application initialization.
 // It will log.Fatal if a configured location is not found, or if no location is configured

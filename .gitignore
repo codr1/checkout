@@ -5,6 +5,15 @@
 *.swo
 *~
 
+# OS-specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
 # Compiled Go files
 *.exe
 *.exe~
@@ -18,6 +27,10 @@ main
 
 # Output of the go coverage tool
 *.out
+
+# Go workspace files
+go.work
+go.work.sum
 
 # Dependency directories
 vendor/
@@ -35,21 +48,53 @@ data/transactions/
 # Build artifacts
 dist/
 build/
+bin/
 
 # Environment files
 .env
 .env.local
 .env.production
+.env.staging
 
 # Logs
 *.log
 logs/
+
+# Development certificates (if generated locally)
+*.pem
+*.key
+*.crt
+*.cert
+
+# Backup files
+*.bak
+*.backup
+*.tmp
+*.orig
 
 # Development and refactoring docs
 REFACTORING_SUMMARY.md
 Session.vim
 TODO.md
 NOTES.md
+CHANGELOG.draft
 
 # Executable
 /checkout
+
+# Node.js (if you add frontend tooling later)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# Coverage reports
+coverage.out
+coverage.html
+coverage/
+
+# Air live reload tool (if used)
+.air.toml
+tmp/

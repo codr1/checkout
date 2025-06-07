@@ -237,6 +237,7 @@ func main() {
 	appMux.HandleFunc("/process-payment", handlers.ProcessPaymentHandler)
 	appMux.HandleFunc("/generate-qr-code", handlers.GenerateQRCodeHandler)
 	appMux.HandleFunc("/manual-card-form", handlers.ManualCardFormHandler)
+	appMux.HandleFunc("/payment-events", handlers.PaymentSSEHandler)
 	appMux.HandleFunc("/check-paymentlink-status", handlers.CheckPaymentlinkStatusHandler)
 	appMux.HandleFunc("/cancel-payment-link", handlers.CancelPaymentLinkHandler)
 	appMux.HandleFunc("/expire-payment-link", handlers.ExpirePaymentLinkHandler)

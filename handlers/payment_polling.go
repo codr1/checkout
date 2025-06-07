@@ -1,9 +1,12 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/a-h/templ"
@@ -17,6 +20,197 @@ import (
 	"checkout/templates"
 	"checkout/templates/checkout"
 )
+
+// SSEConnection represents a Server-Sent Events connection
+type SSEConnection struct {
+	Writer    http.ResponseWriter
+	Flusher   http.Flusher
+	PaymentID string
+	Type      string // "qr" or "terminal"
+	Done      chan bool
+}
+
+// SSEBroadcaster manages SSE connections and broadcasting
+type SSEBroadcaster struct {
+	connections map[string]*SSEConnection
+	mutex       sync.RWMutex
+}
+
+// Global SSE broadcaster instance
+var GlobalSSEBroadcaster = &SSEBroadcaster{
+	connections: make(map[string]*SSEConnection),
+}
+
+// AddConnection adds a new SSE connection
+func (b *SSEBroadcaster) AddConnection(paymentID, paymentType string, w http.ResponseWriter) *SSEConnection {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		return nil
+	}
+
+	conn := &SSEConnection{
+		Writer:    w,
+		Flusher:   flusher,
+		PaymentID: paymentID,
+		Type:      paymentType,
+		Done:      make(chan bool),
+	}
+
+	b.mutex.Lock()
+	b.connections[paymentID] = conn
+	b.mutex.Unlock()
+
+	log.Printf("[SSE] New connection for %s payment: %s", paymentType, paymentID)
+	return conn
+}
+
+// RemoveConnection removes an SSE connection
+func (b *SSEBroadcaster) RemoveConnection(paymentID string) {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+
+	if conn, exists := b.connections[paymentID]; exists {
+		close(conn.Done)
+		delete(b.connections, paymentID)
+		log.Printf("[SSE] Removed connection for payment: %s", paymentID)
+	}
+}
+
+// BroadcastPaymentUpdate sends a payment update to relevant SSE connections
+func (b *SSEBroadcaster) BroadcastPaymentUpdate(paymentID string, component templ.Component) {
+	b.mutex.RLock()
+	conn, exists := b.connections[paymentID]
+	b.mutex.RUnlock()
+
+	if !exists {
+		return
+	}
+
+	// Render component to string - use context.Background() instead of nil
+	var buf strings.Builder
+	if err := component.Render(context.Background(), &buf); err != nil {
+		log.Printf("[SSE] Error rendering component for %s: %v", paymentID, err)
+		return
+	}
+
+	// Send SSE event - use HTMX-compatible format
+	fmt.Fprintf(conn.Writer, "event: payment-update\n")
+	fmt.Fprintf(conn.Writer, "data: %s\n\n", buf.String())
+	conn.Flusher.Flush()
+
+	log.Printf("[SSE] Sent payment update for: %s", paymentID)
+}
+
+// PaymentSSEHandler handles SSE connections for payment updates
+func PaymentSSEHandler(w http.ResponseWriter, r *http.Request) {
+	paymentID := r.URL.Query().Get("payment_id")
+	paymentType := r.URL.Query().Get("type") // "qr" or "terminal"
+
+	if paymentID == "" || paymentType == "" {
+		http.Error(w, "payment_id and type parameters required", http.StatusBadRequest)
+		return
+	}
+
+	// Set SSE headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	// Add connection to broadcaster
+	conn := GlobalSSEBroadcaster.AddConnection(paymentID, paymentType, w)
+	if conn == nil {
+		http.Error(w, "SSE not supported by client", http.StatusInternalServerError)
+		return
+	}
+
+	// Set up timeout
+	timeout := time.NewTimer(config.PaymentTimeout)
+	defer timeout.Stop()
+
+	// Periodic status checks (less frequent than old polling)
+	// Periodic status checks for real-time updates in polling mode
+	ticker := time.NewTicker(2 * time.Second) // Keep responsive for localhost polling mode
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-conn.Done:
+			GlobalSSEBroadcaster.RemoveConnection(paymentID)
+			return
+		case <-r.Context().Done():
+			GlobalSSEBroadcaster.RemoveConnection(paymentID)
+			return
+		case <-timeout.C:
+			// Payment timeout - send expiration event and cleanup
+			handleSSETimeout(paymentID, paymentType)
+			GlobalSSEBroadcaster.RemoveConnection(paymentID)
+			return
+		case <-ticker.C:
+			// Periodic status check (fallback when no webhooks received)
+			checkAndSendSSEUpdate(paymentID, paymentType)
+		}
+	}
+}
+
+// sendInitialSSEUpdate sends the initial progress update
+func sendInitialSSEUpdate(conn *SSEConnection, paymentID, paymentType string) {
+	state, exists := GlobalPaymentStateManager.GetPayment(paymentID)
+	if !exists {
+		return
+	}
+
+	progress := calculateProgressInfo(state.GetStartTime(), config.PaymentTimeout)
+	component := createPaymentProgressComponent(paymentID, progress, paymentType)
+
+	var buf strings.Builder
+	if err := component.Render(context.Background(), &buf); err != nil {
+		log.Printf("[SSE] Error rendering initial component: %v", err)
+		return
+	}
+
+	fmt.Fprintf(conn.Writer, "event: payment-update\n")
+	fmt.Fprintf(conn.Writer, "data: %s\n\n", buf.String())
+	conn.Flusher.Flush()
+}
+
+// checkAndSendSSEUpdate checks payment status and sends update via SSE
+func checkAndSendSSEUpdate(paymentID, paymentType string) {
+	var result PaymentStatusResult
+
+	switch paymentType {
+	case "qr":
+		result = checkQRPaymentStatus(paymentID)
+	case "terminal":
+		result = checkTerminalPaymentStatus(paymentID)
+	default:
+		return
+	}
+
+	if result.Component != nil {
+		GlobalSSEBroadcaster.BroadcastPaymentUpdate(paymentID, result.Component)
+	}
+
+	if result.ShouldStop {
+		GlobalSSEBroadcaster.RemoveConnection(paymentID)
+	}
+}
+
+// handleSSETimeout handles payment timeout via SSE
+func handleSSETimeout(paymentID, paymentType string) {
+	switch paymentType {
+	case "qr":
+		result := handleQRPaymentTimeout(paymentID)
+		if result.Component != nil {
+			GlobalSSEBroadcaster.BroadcastPaymentUpdate(paymentID, result.Component)
+		}
+	case "terminal":
+		result := handleTerminalPaymentTimeout(paymentID)
+		if result.Component != nil {
+			GlobalSSEBroadcaster.BroadcastPaymentUpdate(paymentID, result.Component)
+		}
+	}
+}
 
 // PaymentStatusResult represents the result of checking payment status
 type PaymentStatusResult struct {
@@ -98,11 +292,11 @@ func createPaymentProgressComponentWithOptions(opts PaymentProgressOptions) temp
 			</div>
 			%s
 		</div>`,
-		opts.PaymentType, 
-		getPaymentTypeDisplayString(opts.PaymentType), 
+		opts.PaymentType,
+		getPaymentTypeDisplayString(opts.PaymentType),
 		statusMessage,
-		opts.Progress.SecondsRemaining, 
-		opts.Progress.ProgressWidth, 
+		opts.Progress.SecondsRemaining,
+		opts.Progress.ProgressWidth,
 		additionalInfo,
 	)
 
@@ -222,7 +416,7 @@ func checkQRPaymentStatus(paymentLinkID string) PaymentStatusResult {
 	// First, check webhook cache if available
 	if cachedState, found := GetCachedPaymentState(paymentLinkID, "payment_link"); found {
 		log.Printf("[QR] Using cached state for payment link: %s, Status: %s", paymentLinkID, cachedState.Status)
-		
+
 		// Handle cached payment completion
 		if cachedState.Status == "completed" {
 			paymentLinkStatus := services.PaymentLinkStatus{
@@ -231,7 +425,7 @@ func checkQRPaymentStatus(paymentLinkID string) PaymentStatusResult {
 			}
 			return handleQRPaymentSuccess(paymentLinkID, paymentLinkStatus)
 		}
-		
+
 		// Handle cached inactive/expired state
 		if cachedState.Status == "inactive" {
 			return handleQRPaymentTimeout(paymentLinkID)
@@ -288,7 +482,7 @@ func checkTerminalPaymentStatus(intentID string) PaymentStatusResult {
 	// First, check webhook cache if available
 	if cachedState, found := GetCachedPaymentState(intentID, "payment_intent"); found {
 		log.Printf("[Terminal] Using cached state for payment intent: %s, Status: %s", intentID, cachedState.Status)
-		
+
 		// Handle cached payment success
 		if cachedState.Status == "succeeded" || cachedState.Status == "charge_succeeded" {
 			// Create a mock intent object with the status we need
@@ -298,16 +492,17 @@ func checkTerminalPaymentStatus(intentID string) PaymentStatusResult {
 			}
 			return handleTerminalPaymentSuccess(intentID, terminalState, intent)
 		}
-		
+
 		// Handle cached payment failures
 		if cachedState.Status == "failed" || cachedState.Status == "charge_failed" || cachedState.Status == "canceled" {
 			// Create a mock intent object with the status we need
 			intent := &stripe.PaymentIntent{
 				ID:     intentID,
 				Status: stripe.PaymentIntentStatusCanceled,
+				LastPaymentError: &stripe.Error{
+					Msg: cachedState.LastPaymentError,
+				},
 			}
-			// Note: We can't construct LastPaymentError directly, so we'll pass the error message another way
-			// The handleTerminalPaymentFailure function will use a generic error message in this case
 			return handleTerminalPaymentFailure(intentID, intent)
 		}
 	}
@@ -399,7 +594,14 @@ func handleQRPaymentSuccess(paymentLinkID string, paymentLinkStatus services.Pay
 	}
 
 	// Save transaction
-	GlobalPaymentEventLogger.LogPaymentEvent(paymentLinkID, PaymentEventSuccess, "qr", services.AppState.CurrentCart, summary, paymentLinkStatus.CustomerEmail)
+	GlobalPaymentEventLogger.LogPaymentEvent(
+		paymentLinkID,
+		PaymentEventSuccess,
+		"qr",
+		services.AppState.CurrentCart,
+		summary,
+		paymentLinkStatus.CustomerEmail,
+	)
 
 	// Clean up state and clear cart in one operation
 	GlobalPaymentStateManager.RemovePaymentAndClearCart(paymentLinkID)

@@ -55,7 +55,17 @@ templ Layout(title string) {
 			document.body.addEventListener('showToast', function(evt) {
 				const toast = document.getElementById('toast');
 				toast.textContent = evt.detail;
-				toast.classList.add('show');
+				toast.className = 'toast show'; // Reset classes and add show
+				setTimeout(function() {
+					toast.classList.remove('show');
+				}, 3000);
+			});
+			
+			// HTMX event listener for success toast messages (green)
+			document.body.addEventListener('showToastSuccess', function(evt) {
+				const toast = document.getElementById('toast');
+				toast.textContent = evt.detail;
+				toast.className = 'toast toast-success show'; // Add success styling
 				setTimeout(function() {
 					toast.classList.remove('show');
 				}, 3000);
@@ -70,6 +80,14 @@ templ Layout(title string) {
 						if (triggers.showToast) {
 							const event = new CustomEvent('showToast', {
 								detail: triggers.showToast
+							});
+							document.body.dispatchEvent(event);
+						}
+						
+						// Handle showToastSuccess trigger
+						if (triggers.showToastSuccess) {
+							const event = new CustomEvent('showToastSuccess', {
+								detail: triggers.showToastSuccess
 							});
 							document.body.dispatchEvent(event);
 						}
@@ -98,6 +116,7 @@ templ Layout(title string) {
 					}
 				}
 			});
+			
 			
 			// Close modal when clicking outside or on close button
 			document.querySelector('.modal-background').addEventListener('click', function() {

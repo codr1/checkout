@@ -14,7 +14,7 @@ templ Page(availableReaders []templates.StripeReader, selectedReaderID string) {
 					<label for="reader_id_select">Terminal:</label>
 					<select name="reader_id" id="reader_id_select">
 						for _, reader := range availableReaders {
-							<option value="{ reader.ID }" selected="{ reader.ID == selectedReaderID }">
+							<option value={ reader.ID } selected?={ reader.ID == selectedReaderID }>
 								if reader.Label != "" {
 									if reader.Status != "online" {
 										{ fmt.Sprintf("%s (%s)", reader.Label, reader.Status) }
@@ -87,6 +87,16 @@ templ Page(availableReaders []templates.StripeReader, selectedReaderID string) {
 				<div hx-get="/cart" hx-trigger="load, cartUpdated from:body"></div>
 				
 				<div hx-get="/checkout-form" hx-trigger="load"></div>
+				
+				<div class="cancel-transaction-section">
+					<button 
+						class="cancel-transaction-btn" 
+						hx-post="/cancel-transaction" 
+						hx-swap="none" 
+						hx-confirm="Are you sure you want to cancel this transaction? This will clear your cart.">
+						Cancel Transaction
+					</button>
+				</div>
 			</div>
 		</div>
 	}

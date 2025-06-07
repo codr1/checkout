@@ -213,9 +213,19 @@ func ReceiptInfoHandler(w http.ResponseWriter, r *http.Request) {
 	email := r.FormValue("receipt_email")
 	phone := r.FormValue("receipt_phone")
 
+	// Debug: Log what we received to understand the current form structure
+	log.Printf("ReceiptInfoHandler - Method: %s", r.Method)
+	log.Printf("ReceiptInfoHandler - Headers: %v", r.Header)
+	log.Printf(
+		"ReceiptInfoHandler - Form Values: confirmation_code=%s, receipt_email=%s, receipt_phone=%s",
+		confirmationCode,
+		email,
+		phone,
+	)
+
 	// Validate that at least one contact method is provided
 	if email == "" && phone == "" {
-		if err := renderReceiptError(w, r, "Please provide either an email address or phone number.", confirmationCode); err != nil {
+		if err := renderReceiptError(w, "Please provide either an email address or phone number."); err != nil {
 			log.Printf("Error rendering receipt error: %v", err)
 		}
 		return
@@ -242,7 +252,7 @@ func ReceiptInfoHandler(w http.ResponseWriter, r *http.Request) {
 	// Handle the result
 	if sendError != nil {
 		log.Printf("Error sending receipt: %v", sendError)
-		if err := renderReceiptError(w, r, "Failed to send receipt. Please check your contact information and try again.", confirmationCode); err != nil {
+		if err := renderReceiptError(w, "Failed to send receipt. Please check your contact information and try again."); err != nil {
 			log.Printf("Error rendering receipt error: %v", err)
 		}
 		return
@@ -250,7 +260,7 @@ func ReceiptInfoHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Success - render success component
 	log.Printf("Receipt sent successfully via %s for transaction %s", sentMethod, confirmationCode)
-	if err := renderReceiptSuccess(w, r, sentMethod); err != nil {
+	if err := renderReceiptSuccess(w, sentMethod); err != nil {
 		log.Printf("Error rendering receipt success: %v", err)
 	}
 }
@@ -265,7 +275,7 @@ func sendEmailReceipt(confirmationCode, email string) error {
 	if strings.Contains(strings.ToLower(email), "fail") {
 		return fmt.Errorf("simulated email sending failure")
 	}
-	
+
 	// For now, always succeed for demonstration
 	return nil
 }
@@ -280,57 +290,32 @@ func sendSMSReceipt(confirmationCode, phone string) error {
 	if strings.Contains(strings.ToLower(phone), "fail") {
 		return fmt.Errorf("simulated SMS sending failure")
 	}
-	
+
 	// For now, always succeed for demonstration
 	return nil
 }
 
 // renderReceiptSuccess renders the receipt success component
-func renderReceiptSuccess(w http.ResponseWriter, r *http.Request, method string) error {
-	// Create a simple success component inline since we can't access the template file
-	successHTML := fmt.Sprintf(`
-		<div class="receipt-success" id="receipt-form-container">
-			<h4>Receipt Sent!</h4>
-			<p>Your receipt has been sent to the %s you provided.</p>
-		</div>
-	`, method)
+func renderReceiptSuccess(w http.ResponseWriter, method string) error {
+	// Instead of trying to update the DOM directly, use HX-Trigger to close the modal
+	// and show a green success toast notification
 
 	w.Header().Set("Content-Type", "text/html")
+	w.Header().Set("HX-Trigger", fmt.Sprintf(`{"closeModal": true, "showToastSuccess": "Receipt sent to %s!"}`, method))
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(successHTML))
+	w.Write([]byte("")) // Empty response since we're just triggering events
 	return nil
 }
 
-// renderReceiptError renders the receipt error component  
-func renderReceiptError(w http.ResponseWriter, r *http.Request, errorMessage, confirmationCode string) error {
-	// Show error message but preserve the original form - don't replace everything
-	errorHTML := fmt.Sprintf(`
-		<div class="receipt-form" id="receipt-form-container">
-			<div class="error-message" style="background-color: #f44336; color: white; padding: 10px; margin-bottom: 15px; border-radius: 4px;">
-				<strong>Receipt Sending Failed:</strong> %s
-			</div>
-			<h4>Would you like to receive a receipt?</h4>
-			<form hx-post="/update-receipt-info" hx-include="[name='confirmation_code']" hx-target="#receipt-form-container" hx-swap="innerHTML">
-				<input type="hidden" name="confirmation_code" value="%s" />
-				<div>
-					<label for="receipt_email">Email:</label>
-					<input type="email" id="receipt_email" name="receipt_email" placeholder="your@email.com" value="%s" />
-				</div>
-				<div>
-					<label for="receipt_phone">Phone Number:</label>
-					<input type="tel" id="receipt_phone" name="receipt_phone" placeholder="(123) 456-7890" value="%s" />
-				</div>
-				<div style="display: flex; gap: 10px; margin-top: 15px;">
-					<button type="submit">Try Again</button>
-					<button type="button" class="skip-btn" hx-post="/close-modal" hx-swap="none" style="background-color: #6c757d;">Skip Receipt</button>
-				</div>
-			</form>
-		</div>
-	`, errorMessage, confirmationCode, r.FormValue("receipt_email"), r.FormValue("receipt_phone"))
+// renderReceiptError renders the receipt error component
+func renderReceiptError(w http.ResponseWriter, errorMessage string) error {
+	// For errors, show a toast notification and keep the modal open
+	// This allows the user to try again without losing their input
 
 	w.Header().Set("Content-Type", "text/html")
+	w.Header().Set("HX-Trigger", fmt.Sprintf(`{"showToast": "%s"}`, errorMessage))
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(errorHTML))
+	w.Write([]byte("")) // Empty response since we're just showing a toast
 	return nil
 }
 

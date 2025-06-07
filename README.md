@@ -59,6 +59,7 @@ The application uses the following environment variables:
    - Website information
    - Default customer location
    - Tax configuration (default tax rate)
+   - Tipping configuration (global settings)
    - System configuration (port, data directories)
 
 The configuration will be stored in `./data/config.json`. You can edit this file directly if needed.
@@ -123,6 +124,17 @@ The system uses a simple local tax calculation system that's cost-effective and 
 - Tax is calculated locally without external API calls
 - Each item in the cart uses either its category tax rate or the default rate
 - Total tax is the sum of individual item taxes
+
+## Tipping Configuration
+
+The system supports configurable tipping for Stripe Terminal payments:
+
+- **Global Setting**: Enable/disable tipping system-wide (defaults to disabled)
+- **Location Overrides**: Override global setting for specific terminal locations
+- **Amount Thresholds**: Set minimum/maximum transaction amounts for tipping eligibility
+- **Service Restrictions**: Optionally restrict tipping to specific service categories
+
+Tipping settings are configured during initial setup and can be managed through the configuration file.
 
 ## Stripe Integration
 
@@ -245,8 +257,8 @@ Example tax category in config.json:
     }
   ]
 }
+```
 
-## Security Considerations
 ## Communication Strategy
 
 The backend automatically selects the optimal communication method with Stripe based on your domain configuration:

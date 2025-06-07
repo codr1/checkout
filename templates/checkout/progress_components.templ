@@ -5,34 +5,41 @@ import (
 	"strconv"
 )
 
-// UnifiedPollingConfig holds all configuration for HTMX polling and expiration
-type UnifiedPollingConfig struct {
+// UnifiedSSEConfig holds all configuration for SSE and expiration
+type UnifiedSSEConfig struct {
 	PaymentID      string
 	PaymentType    string  // "qr" or "terminal"
-	PollEndpoint   string
-	PollInterval   string  // e.g. "2s"  
 	ExpireEndpoint string
 	ExpireDelay    string  // e.g. "120s"
 	IncludeFields  string  // e.g. "[name='payment_intent_id'], [name='reader_id']"
 	TargetElement  string  // e.g. "#payment-status-details"
 }
 
-// UnifiedPollingContainer creates the HTMX polling and expiration logic
-// This is the core component that replaces scattered polling patterns
-templ UnifiedPollingContainer(config UnifiedPollingConfig) {
-	<!-- Status polling trigger -->
-	<div id={ fmt.Sprintf("%s-polling-container", config.PaymentType) }
-		hx-get={ config.PollEndpoint }
-		hx-trigger={ fmt.Sprintf("load, every %s", config.PollInterval) }
-		hx-target={ config.TargetElement }
-		hx-swap="innerHTML">
+// UnifiedSSEContainer creates the SSE connection and expiration logic
+// This replaces UnifiedPollingContainer
+templ UnifiedSSEContainer(config UnifiedSSEConfig) {
+	<!-- SSE connection for real-time updates -->
+	<div id={ fmt.Sprintf("%s-sse-container", config.PaymentType) }
+		hx-sse={ fmt.Sprintf("connect:/payment-events?payment_id=%s&type=%s", config.PaymentID, config.PaymentType) }>
+		<div hx-sse="swap:payment-update" 
+			 hx-target={ config.TargetElement }
+			 hx-swap="innerHTML">
+		</div>
 	</div>
 	
 	<!-- Auto-expiration trigger -->
-	if config.ExpireEndpoint != "" {
+	if config.ExpireEndpoint != "" && config.IncludeFields != "" {
 		<div class="hidden-action-trigger"
 			hx-post={ config.ExpireEndpoint }
 			hx-include={ config.IncludeFields }
+			hx-target="#modal-content"
+			hx-swap="innerHTML"
+			hx-trigger={ fmt.Sprintf("load delay:%s", config.ExpireDelay) }>
+		</div>
+	} else if config.ExpireEndpoint != "" {
+		<div class="hidden-action-trigger"
+			hx-post={ config.ExpireEndpoint }
+			hx-vals={ "{\"payment_link_id\": \"" + config.PaymentID + "\"}" }
 			hx-target="#modal-content"
 			hx-swap="innerHTML"
 			hx-trigger={ fmt.Sprintf("load delay:%s", config.ExpireDelay) }>
@@ -57,54 +64,67 @@ templ SimpleProgressDisplay(paymentType string, secondsRemaining int, progressWi
 	</div>
 }
 
-// QRPaymentContainer creates the complete QR payment UI with unified polling
+// QRPaymentContainer - SSE-powered real-time payment updates
 templ QRPaymentContainer(qrBase64 string, paymentLinkID string, totalAmount float64, customerEmail string) {
-	<div class="qr-code-section" id="payment-container">
+	<div class="qr-payment-container" id="payment-container">
 		<h3>Payment QR Code</h3>
-		
-		<!-- QR Code Display -->
-		<div class="qr-code">
-			<img src={ "data:image/png;base64," + qrBase64 } alt="Payment QR Code" width="256" height="256">
-			<p class="total-amount">Total Amount: ${ fmt.Sprintf("%.2f", totalAmount) }</p>
-			<p class="instructions">Scan with your camera app to pay</p>
+		<div class="qr-code-display">
+			<img src={ "data:image/png;base64," + qrBase64 } alt="Payment QR Code" class="qr-code-image"/>
+			<p class="qr-instructions">
+				Scan this QR code with your camera app to pay securely.
+			</p>
+			<p class="payment-amount">
+				Total Amount: <strong>${ fmt.Sprintf("%.2f", totalAmount) }</strong>
+			</p>
+			if customerEmail != "" {
+				<p class="customer-email">
+					Receipt will be sent to: <strong>{ customerEmail }</strong>
+				</p>
+			}
 		</div>
 		
-		<!-- Hidden form fields -->
-		<input type="hidden" name="payment_link_id" id="payment_link_id" value={ paymentLinkID } />
-		<input type="hidden" name="customer_email" id="customer_email" value={ customerEmail } />
-		
-		<!-- Status display area -->
-		<div id="payment-status">
-			<p>Waiting for QR code scan...</p>
+		<!-- Status display area that will be updated by SSE -->
+		<div id="qr-payment-status-details">
+			<div class="payment-progress qr-progress">
+				<h4>QR Code Payment in Progress</h4>
+				<p>Waiting for QR code scan...</p>
+				<p>Payment expires in <span id="countdown">120</span> seconds</p>
+				<div class="progress-bar">
+					<div class="progress-fill" style="width: 0%;"></div>
+				</div>
+				<p><small>Payment ID: { paymentLinkID }</small></p>
+			</div>
 		</div>
-		
-		<!-- Unified polling configuration -->
-		@UnifiedPollingContainer(UnifiedPollingConfig{
+
+		<!-- Unified SSE configuration -->
+		@UnifiedSSEContainer(UnifiedSSEConfig{
 			PaymentID:      paymentLinkID,
 			PaymentType:    "qr",
-			PollEndpoint:   "/check-paymentlink-status?payment_link_id=" + paymentLinkID + "&customer_email=" + customerEmail,
-			PollInterval:   "2s",
-			ExpireEndpoint: "/expire-payment-link",
+			ExpireEndpoint: "/expire-terminal-payment",
 			ExpireDelay:    "120s",
-			IncludeFields:  "[name='payment_link_id']",
-			TargetElement:  "#payment-status",
+			IncludeFields:  "[name='payment_intent_id'], [name='reader_id']",
+			TargetElement:  "#terminal-payment-status-details",
 		})
 		
-		<!-- Cancel button -->
-		<button 
-			type="button" 
-			class="cancel-btn" 
-			hx-post="/cancel-payment-link"
-			hx-include="[name='payment_link_id']"
-			hx-target="#modal-content" 
-			hx-swap="innerHTML"
-		>
-			Cancel Payment
-		</button>
+		<!-- Action buttons -->
+		<div class="payment-actions">
+			<button 
+				type="button" 
+				class="cancel-btn" 
+				hx-post="/cancel-payment-link"
+				hx-vals={ "{\"payment_link_id\": \"" + paymentLinkID + "\"}" }
+				hx-target="#modal-content"
+				hx-swap="innerHTML"
+				hx-confirm="Are you sure you want to cancel this payment?"
+			>
+				Cancel Payment
+			</button>
+		</div>
 	</div>
 }
 
-// TerminalPaymentContainer creates the complete terminal payment UI with unified polling
+
+// TerminalPaymentContainer creates the complete terminal payment UI with SSE
 templ TerminalPaymentContainer(paymentIntentID string, readerID string, totalAmount float64, customerEmail string) {
 	<div class="terminal-processing-container" id="terminal-payment-status-container">
 		<h3>Processing Payment on Terminal</h3>
@@ -125,15 +145,13 @@ templ TerminalPaymentContainer(paymentIntentID string, readerID string, totalAmo
 
 		<!-- Status display area -->
 		<div id="terminal-payment-status-details">
-			<p>Initializing...</p>
+			<div class="payment-progress terminal-progress"><h4>Terminal Payment in Progress</h4><p>Please complete the transaction on the payment terminal.</p><p>Payment expires in <span id="countdown">120</span> seconds</p><div class="progress-bar"><div class="progress-fill" style="width: 0%;"></div></div><p><small>Payment ID: { paymentIntentID }</small></p></div>
 		</div>
 
-		<!-- Unified polling configuration -->
-		@UnifiedPollingContainer(UnifiedPollingConfig{
+		<!-- Unified SSE configuration -->
+		@UnifiedSSEContainer(UnifiedSSEConfig{
 			PaymentID:      paymentIntentID,
-			PaymentType:    "terminal",
-			PollEndpoint:   fmt.Sprintf("/check-terminal-payment-status?payment_intent_id=%s&reader_id=%s", paymentIntentID, readerID),
-			PollInterval:   "2s",
+			PaymentType:    "qr",
 			ExpireEndpoint: "/expire-terminal-payment",
 			ExpireDelay:    "120s",
 			IncludeFields:  "#payment_intent_id, #reader_id",

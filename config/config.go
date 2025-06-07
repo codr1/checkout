@@ -320,6 +320,63 @@ func promptForConfig() error {
 	// Initialize empty tax categories - these can be managed through the admin interface later
 	Config.TaxCategories = []templates.TaxCategory{}
 
+	// Tipping Configuration - Set defaults
+	fmt.Println("\n=== Tipping Configuration ===")
+	fmt.Print("Enable tipping globally? (y/n) [default: n]: ")
+	tippingInput, err := reader.ReadString('\n')
+	if err != nil {
+		return err
+	}
+	tippingInput = strings.TrimSpace(strings.ToLower(tippingInput))
+	Config.TippingEnabled = (tippingInput == "y" || tippingInput == "yes")
+
+	// Initialize tipping defaults
+	Config.TippingLocationOverrides = make(map[string]bool)
+	Config.TippingMinAmount = 0.0 // No minimum by default
+	Config.TippingMaxAmount = 0.0 // No maximum by default (0 = unlimited)
+	Config.TippingPresetPercentages = []int{15, 18, 20, 25} // Common preset percentages
+	Config.TippingAllowCustomAmount = true // Allow custom amounts by default
+	Config.TippingServiceCategoriesOnly = []string{} // Empty = all categories
+
+	if Config.TippingEnabled {
+		fmt.Print("Minimum transaction amount for tipping (in dollars, 0 for no minimum): ")
+		minAmountStr, err := reader.ReadString('\n')
+		if err != nil {
+			return err
+		}
+		minAmountStr = strings.TrimSpace(minAmountStr)
+		if minAmountStr != "" {
+			fmt.Sscanf(minAmountStr, "%f", &Config.TippingMinAmount)
+			if Config.TippingMinAmount < 0 {
+				Config.TippingMinAmount = 0.0
+			}
+		}
+
+		fmt.Print("Maximum transaction amount for tipping (in dollars, 0 for no maximum): ")
+		maxAmountStr, err := reader.ReadString('\n')
+		if err != nil {
+			return err
+		}
+		maxAmountStr = strings.TrimSpace(maxAmountStr)
+		if maxAmountStr != "" {
+			fmt.Sscanf(maxAmountStr, "%f", &Config.TippingMaxAmount)
+			if Config.TippingMaxAmount < 0 {
+				Config.TippingMaxAmount = 0.0
+			}
+		}
+
+		fmt.Print("Allow custom tip amounts? (y/n) [default: y]: ")
+		customTipInput, err := reader.ReadString('\n')
+		if err != nil {
+			return err
+		}
+		customTipInput = strings.TrimSpace(strings.ToLower(customTipInput))
+		Config.TippingAllowCustomAmount = !(customTipInput == "n" || customTipInput == "no")
+	}
+
+	fmt.Printf("Tipping configuration: Enabled=%v, MinAmount=%.2f, MaxAmount=%.2f\n", 
+		Config.TippingEnabled, Config.TippingMinAmount, Config.TippingMaxAmount)
+
 	return nil
 }
 
@@ -402,4 +459,41 @@ func GetStripeWebhookSecret() string {
 
 	fmt.Println("[WARN] Stripe webhook secret not found in environment or config")
 	return ""
+}
+
+// SetTippingLocationOverride sets a location-specific tipping override
+func SetTippingLocationOverride(locationID string, enabled bool) error {
+	if Config.TippingLocationOverrides == nil {
+		Config.TippingLocationOverrides = make(map[string]bool)
+	}
+	
+	Config.TippingLocationOverrides[locationID] = enabled
+	
+	// Save the updated configuration
+	configPath := filepath.Join(DefaultDataDir, "config.json")
+	return saveConfig(configPath)
+}
+
+// RemoveTippingLocationOverride removes a location-specific tipping override
+func RemoveTippingLocationOverride(locationID string) error {
+	if Config.TippingLocationOverrides == nil {
+		return nil // Nothing to remove
+	}
+	
+	delete(Config.TippingLocationOverrides, locationID)
+	
+	// Save the updated configuration
+	configPath := filepath.Join(DefaultDataDir, "config.json")
+	return saveConfig(configPath)
+}
+
+// GetTippingEnabledForLocation returns whether tipping is enabled for a specific location
+func GetTippingEnabledForLocation(locationID string) bool {
+	// Check for location-specific override first
+	if override, exists := Config.TippingLocationOverrides[locationID]; exists {
+		return override
+	}
+	
+	// Fall back to global setting
+	return Config.TippingEnabled
 }
