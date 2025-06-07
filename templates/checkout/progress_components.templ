@@ -16,15 +16,14 @@ type UnifiedSSEConfig struct {
 }
 
 // UnifiedSSEContainer creates the SSE connection and expiration logic
-// This replaces UnifiedPollingContainer
 templ UnifiedSSEContainer(config UnifiedSSEConfig) {
-	<!-- SSE connection for real-time updates -->
-	<div id={ fmt.Sprintf("%s-sse-container", config.PaymentType) }
-		hx-sse={ fmt.Sprintf("connect:/payment-events?payment_id=%s&type=%s", config.PaymentID, config.PaymentType) }>
-		<div hx-sse="swap:payment-update" 
-			 hx-target={ config.TargetElement }
-			 hx-swap="innerHTML">
-		</div>
+	<!-- HTMX polling for real-time updates (pure HTMX, no JavaScript needed) -->
+	<div id={ fmt.Sprintf("%s-polling-container", config.PaymentType) }
+		hx-get={ fmt.Sprintf("/check-%s-payment-status?payment_id=%s", config.PaymentType, config.PaymentID) }
+		hx-target={ config.TargetElement }
+		hx-swap="innerHTML"
+		hx-trigger="load, every 2s"
+		hx-headers='{"X-Payment-Type": "{ config.PaymentType }"}'>
 	</div>
 	
 	<!-- Auto-expiration trigger -->
@@ -52,6 +51,7 @@ templ UnifiedSSEContainer(config UnifiedSSEConfig) {
 		}
 	</style>
 }
+
 
 // SimpleProgressDisplay shows progress without polling (used by handlers)
 templ SimpleProgressDisplay(paymentType string, secondsRemaining int, progressWidth float64, statusMessage string) {
@@ -145,13 +145,23 @@ templ TerminalPaymentContainer(paymentIntentID string, readerID string, totalAmo
 
 		<!-- Status display area -->
 		<div id="terminal-payment-status-details">
-			<div class="payment-progress terminal-progress"><h4>Terminal Payment in Progress</h4><p>Please complete the transaction on the payment terminal.</p><p>Payment expires in <span id="countdown">120</span> seconds</p><div class="progress-bar"><div class="progress-fill" style="width: 0%;"></div></div><p><small>Payment ID: { paymentIntentID }</small></p></div>
+			<div class="payment-progress terminal-progress">
+                <h4>Terminal Payment in Progress</h4>
+                <p>Please complete the transaction on the payment terminal.</p>
+                <p>Payment expires in 
+                    <span id="countdown">120</span> seconds
+                </p>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: 0%;"></div>
+                </div>
+                <p><small>Payment ID: { paymentIntentID }</small></p>
+            </div>
 		</div>
 
 		<!-- Unified SSE configuration -->
 		@UnifiedSSEContainer(UnifiedSSEConfig{
 			PaymentID:      paymentIntentID,
-			PaymentType:    "qr",
+			PaymentType:    "terminal",
 			ExpireEndpoint: "/expire-terminal-payment",
 			ExpireDelay:    "120s",
 			IncludeFields:  "#payment_intent_id, #reader_id",

@@ -8,12 +8,12 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"math"
 
 	"github.com/a-h/templ"
 	"github.com/stripe/stripe-go/v74"
 	"github.com/stripe/stripe-go/v74/paymentintent"
 	"github.com/stripe/stripe-go/v74/paymentlink"
-	"github.com/stripe/stripe-go/v74/terminal/reader"
 
 	"checkout/config"
 	"checkout/services"
@@ -205,7 +205,17 @@ func handleSSETimeout(paymentID, paymentType string) {
 			GlobalSSEBroadcaster.BroadcastPaymentUpdate(paymentID, result.Component)
 		}
 	case "terminal":
-		result := handleTerminalPaymentTimeout(paymentID)
+		// Fetch the real PaymentIntent from Stripe
+		intent, err := paymentintent.Get(paymentID, nil)
+		if err != nil {
+			log.Printf("Error fetching PaymentIntent %s for timeout handling: %v", paymentID, err)
+			// If we can't fetch it, create a minimal intent for cleanup
+			intent = &stripe.PaymentIntent{
+				ID:     paymentID,
+				Status: stripe.PaymentIntentStatusRequiresPaymentMethod,
+			}
+		}
+		result := handleTerminalPaymentTimeout(paymentID, intent)
 		if result.Component != nil {
 			GlobalSSEBroadcaster.BroadcastPaymentUpdate(paymentID, result.Component)
 		}
@@ -261,7 +271,7 @@ func createPaymentProgressComponent(paymentID string, progress ProgressInfo, pay
 }
 
 // createPaymentProgressComponentWithOptions creates a payment progress component with advanced options
-// Now returns raw HTML that templates can embed
+// Now returns raw HTML that templates can embed with real-time server-calculated progress
 func createPaymentProgressComponentWithOptions(opts PaymentProgressOptions) templ.Component {
 	// Determine the status message
 	statusMessage := config.GetPaymentMessage(opts.PaymentType, "default")
@@ -281,9 +291,16 @@ func createPaymentProgressComponentWithOptions(opts PaymentProgressOptions) temp
 		additionalInfo = fmt.Sprintf("<p><small>Payment ID: %s</small></p>", opts.PaymentID)
 	}
 
+	// Generate the unified progress HTML with stop-polling trigger when final state reached
+	var stopPollingAttr string
+	if opts.Progress.SecondsRemaining <= 0 {
+		// Payment has timed out, stop polling
+		stopPollingAttr = `hx-trigger="none"`
+	}
+
 	// Generate the unified progress HTML using our centralized constants
 	progressHTML := fmt.Sprintf(`
-		<div class="payment-progress %s-progress">
+		<div class="payment-progress %s-progress" %s>
 			<h4>%s in Progress</h4>
 			<p>%s</p>
 			<p>Payment expires in <span id="countdown">%d</span> seconds</p>
@@ -293,6 +310,7 @@ func createPaymentProgressComponentWithOptions(opts PaymentProgressOptions) temp
 			%s
 		</div>`,
 		opts.PaymentType,
+		stopPollingAttr,
 		getPaymentTypeDisplayString(opts.PaymentType),
 		statusMessage,
 		opts.Progress.SecondsRemaining,
@@ -373,6 +391,8 @@ func checkPaymentStatusGeneric(w http.ResponseWriter, r *http.Request, config Pa
 
 	// Handle timeout, success, or failure
 	if result.ShouldStop {
+		// Add HTMX header to stop polling
+		w.Header().Set("HX-Trigger", "stopPolling")
 		if result.Component != nil {
 			w.WriteHeader(http.StatusOK)
 			if err := result.Component.Render(r.Context(), w); err != nil {
@@ -384,7 +404,7 @@ func checkPaymentStatusGeneric(w http.ResponseWriter, r *http.Request, config Pa
 		return
 	}
 
-	// Continue polling - render progress component
+	// Continue polling - render progress component with updated countdown/progress
 	if result.Component != nil {
 		w.WriteHeader(http.StatusOK)
 		if err := result.Component.Render(r.Context(), w); err != nil {
@@ -461,22 +481,43 @@ func checkQRPaymentStatus(paymentLinkID string) PaymentStatusResult {
 
 // checkTerminalPaymentStatus checks terminal payment status
 func checkTerminalPaymentStatus(intentID string) PaymentStatusResult {
+	log.Printf("[Terminal] Checking status for payment intent: %s", intentID)
 	state, exists := GlobalPaymentStateManager.GetPayment(intentID)
 	if !exists {
+		log.Printf("[Terminal] No cached state found for PI %s", intentID)
+		// Payment session not found - render a final "session concluded" message
+		component := checkout.TerminalInteractionResultModal(
+			"Payment Session Concluded",
+			"This payment session is no longer active.",
+			intentID,
+			true, // hasCloseButton
+			"",   // no additional message
+		)
 		return PaymentStatusResult{
-			Status:     "error",
+			Status:     "concluded",
 			Failed:     true,
-			Message:    "Payment session not found",
+			Component:  component,
 			ShouldStop: true,
 		}
 	}
+	log.Printf("[Terminal] Found cached state for PI %s", intentID)
 
 	terminalState := state.(*TerminalPaymentState)
 	progress := calculateProgressInfo(state.GetStartTime(), PAYMENT_POLLING_TIMEOUT)
 
 	// Check for timeout
 	if progress.SecondsRemaining <= 0 {
-		return handleTerminalPaymentTimeout(intentID)
+		// Fetch the real PaymentIntent to see its actual status
+		intent, err := paymentintent.Get(intentID, nil)
+		if err != nil {
+			log.Printf("Error fetching PaymentIntent %s for timeout handling: %v", intentID, err)
+			// If we can't fetch it, create a minimal intent for cleanup
+			intent = &stripe.PaymentIntent{
+				ID:     intentID,
+				Status: stripe.PaymentIntentStatusRequiresPaymentMethod,
+			}
+		}
+		return handleTerminalPaymentTimeout(intentID, intent)
 	}
 
 	// First, check webhook cache if available
@@ -520,39 +561,78 @@ func checkTerminalPaymentStatus(intentID string) PaymentStatusResult {
 		}
 	}
 
-	// Handle completed payment
-	if intent.Status == stripe.PaymentIntentStatusSucceeded {
+	// Check for various payment states
+	switch intent.Status {
+	case stripe.PaymentIntentStatusSucceeded:
 		return handleTerminalPaymentSuccess(intentID, terminalState, intent)
-	}
 
-	// Handle failed payment
-	if intent.Status == stripe.PaymentIntentStatusCanceled ||
-		intent.Status == stripe.PaymentIntentStatusRequiresPaymentMethod {
+	case stripe.PaymentIntentStatusCanceled:
 		return handleTerminalPaymentFailure(intentID, intent)
-	}
 
-	// Continue polling - render progress using our enhanced reusable function
-	var statusMessage string
-	if intent.NextAction != nil &&
-		intent.NextAction.Type == stripe.PaymentIntentNextActionType("display_terminal_receipt") {
-		statusMessage = "Please take your receipt from the terminal."
-	} else {
-		statusMessage = fmt.Sprintf("Processing on terminal... (Status: %s)", intent.Status)
-	}
+	case stripe.PaymentIntentStatusRequiresPaymentMethod:
+		// This is NORMAL for terminal payments - terminal is waiting for customer to present card
+		elapsed := time.Since(terminalState.StartTime)
+		secondsRemaining := int(math.Max(0, config.PaymentTimeout.Seconds()-elapsed.Seconds()))
+		progressWidth := math.Min(100, (elapsed.Seconds()/config.PaymentTimeout.Seconds())*100)
 
-	options := PaymentProgressOptions{
-		PaymentID:     intentID,
-		PaymentType:   "terminal",
-		Progress:      progress,
-		StatusMessage: statusMessage,
-		ReaderID:      terminalState.ReaderID,
-		PaymentStatus: string(intent.Status),
-	}
-	component := createPaymentProgressComponentWithOptions(options)
-	return PaymentStatusResult{
-		Status:     "pending",
-		Component:  component,
-		ShouldStop: false,
+		// Check if we've timed out
+		if secondsRemaining <= 0 {
+			return handleTerminalPaymentTimeout(intentID, intent)
+		}
+
+		// Show "waiting for card" progress
+		options := PaymentProgressOptions{
+			PaymentID:     intentID,
+			PaymentType:   "terminal",
+			Progress:      ProgressInfo{SecondsRemaining: secondsRemaining, ProgressWidth: progressWidth},
+			StatusMessage: "Waiting for customer to present payment method on terminal...",
+			ReaderID:      terminalState.ReaderID,
+			PaymentStatus: string(intent.Status),
+		}
+		component := createPaymentProgressComponentWithOptions(options)
+		return PaymentStatusResult{
+			Status:    "waiting_for_card",
+			Component: component,
+		}
+
+	case stripe.PaymentIntentStatusProcessing,
+		stripe.PaymentIntentStatusRequiresConfirmation,
+		stripe.PaymentIntentStatusRequiresAction:
+		// Payment is still in progress, continue polling
+		elapsed := time.Since(terminalState.StartTime)
+		secondsRemaining := int(math.Max(0, config.PaymentTimeout.Seconds()-elapsed.Seconds()))
+		progressWidth := math.Min(100, (elapsed.Seconds()/config.PaymentTimeout.Seconds())*100)
+
+		var statusMessage string
+		if intent.NextAction != nil &&
+			intent.NextAction.Type == stripe.PaymentIntentNextActionType("display_terminal_receipt") {
+			statusMessage = "Please take your receipt from the terminal."
+		} else {
+			statusMessage = fmt.Sprintf("Processing payment on terminal... (Status: %s)", intent.Status)
+		}
+
+		options := PaymentProgressOptions{
+			PaymentID:     intentID,
+			PaymentType:   "terminal",
+			Progress:      ProgressInfo{SecondsRemaining: secondsRemaining, ProgressWidth: progressWidth},
+			StatusMessage: statusMessage,
+			ReaderID:      terminalState.ReaderID,
+			PaymentStatus: string(intent.Status),
+		}
+		component := createPaymentProgressComponentWithOptions(options)
+		return PaymentStatusResult{
+			Status:    "processing",
+			Component: component,
+		}
+
+	default:
+		log.Printf("Unknown PaymentIntent status for terminal payment %s: %s", intentID, intent.Status)
+		return PaymentStatusResult{
+			Status:     "error",
+			Failed:     true,
+			Message:    fmt.Sprintf("Unknown payment status: %s", intent.Status),
+			ShouldStop: true,
+		}
 	}
 }
 
@@ -618,41 +698,6 @@ func handleQRPaymentSuccess(paymentLinkID string, paymentLinkStatus services.Pay
 	}
 }
 
-// Helper functions for terminal payment handling
-func handleTerminalPaymentTimeout(intentID string) PaymentStatusResult {
-	log.Printf("Terminal payment %s timed out after %v", intentID, PAYMENT_POLLING_TIMEOUT)
-
-	state, _ := GlobalPaymentStateManager.GetPayment(intentID)
-	terminalState := state.(*TerminalPaymentState)
-
-	// Cancel the payment intent
-	_, err := paymentintent.Cancel(intentID, nil)
-	if err != nil {
-		log.Printf("Error canceling payment intent %s: %v", intentID, err)
-	}
-
-	// Cancel reader action if possible
-	if terminalState.ReaderID != "" {
-		_, err := reader.CancelAction(terminalState.ReaderID, nil)
-		if err != nil {
-			log.Printf("Error canceling reader action for %s: %v", terminalState.ReaderID, err)
-		}
-	}
-
-	// Log transaction as expired
-	GlobalPaymentEventLogger.LogPaymentEventFromState(terminalState, PaymentEventExpired, "")
-
-	// Clean up state
-	GlobalPaymentStateManager.RemovePayment(intentID)
-
-	component := checkout.PaymentExpired(intentID)
-	return PaymentStatusResult{
-		Status:     "expired",
-		Expired:    true,
-		Component:  component,
-		ShouldStop: true,
-	}
-}
 
 func handleTerminalPaymentSuccess(
 	intentID string,
@@ -671,6 +716,33 @@ func handleTerminalPaymentSuccess(
 	return PaymentStatusResult{
 		Status:     "completed",
 		Completed:  true,
+		Component:  component,
+		ShouldStop: true,
+	}
+}
+
+func handleTerminalPaymentTimeout(intentID string, intent *stripe.PaymentIntent) PaymentStatusResult {
+	log.Printf("Terminal payment %s timed out after %v", intentID, PAYMENT_POLLING_TIMEOUT)
+
+	state, _ := GlobalPaymentStateManager.GetPayment(intentID)
+	terminalState := state.(*TerminalPaymentState)
+
+	// Log transaction as expired
+	GlobalPaymentEventLogger.LogPaymentEventFromState(terminalState, PaymentEventExpired, "")
+
+	// Clean up state
+	GlobalPaymentStateManager.RemovePayment(intentID)
+
+	component := checkout.TerminalInteractionResultModal(
+		"Payment Timed Out",
+		"Customer did not present payment method within 120 seconds.",
+		intentID,
+		true, // hasCloseButton
+		"",   // no additional message
+	)
+	return PaymentStatusResult{
+		Status:     "expired",
+		Failed:     true,
 		Component:  component,
 		ShouldStop: true,
 	}

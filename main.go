@@ -91,7 +91,7 @@ func init() {
 	}
 
 	log.Println("Stripe API initialized successfully")
-	
+
 	// Set up communication strategy (polling vs webhooks)
 	registerWebhookEndpoint()
 }
@@ -115,12 +115,12 @@ func generateSelfSignedCert() (tls.Certificate, error) {
 			StreetAddress: []string{""},
 			PostalCode:    []string{""},
 		},
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().Add(365 * 24 * time.Hour), // 1 year
-		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
-		DNSNames:     []string{"localhost"},
+		NotBefore:   time.Now(),
+		NotAfter:    time.Now().Add(365 * 24 * time.Hour), // 1 year
+		KeyUsage:    x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		IPAddresses: []net.IP{net.IPv4(127, 0, 0, 1)},
+		DNSNames:    []string{"localhost"},
 	}
 
 	// Create the certificate
@@ -141,7 +141,7 @@ func generateSelfSignedCert() (tls.Certificate, error) {
 // shouldUseHTTPS determines if HTTPS should be used based on websiteName config
 func shouldUseHTTPS() bool {
 	websiteName := strings.TrimSpace(config.Config.WebsiteName)
-	
+
 	// Use HTTPS if no domain configured or domain is localhost
 	// (for local testing with Stripe.js)
 	return websiteName == "" || websiteName == "localhost"
@@ -180,7 +180,7 @@ func registerWebhookEndpoint() {
 	// Events we need for our POS system
 	enabledEvents := []string{
 		"payment_intent.succeeded",
-		"payment_intent.payment_failed", 
+		"payment_intent.payment_failed",
 		"payment_intent.canceled",
 		"payment_intent.requires_action",
 		"payment_link.completed",
@@ -279,10 +279,14 @@ func main() {
 
 	// Determine protocol and start appropriate server
 	if shouldUseHTTPS() {
-		log.Printf("No domain configured (websiteName: '%s') - starting HTTPS server on port %s for local testing...", config.Config.WebsiteName, port)
+		log.Printf(
+			"No domain configured (websiteName: '%s') - starting HTTPS server on port %s for local testing...",
+			config.Config.WebsiteName,
+			port,
+		)
 		log.Printf("⚠️  You will need to accept the security warning in your browser for the self-signed certificate")
 		log.Printf("🔗 Access your application at: https://localhost:%s", port)
-		
+
 		// Generate self-signed certificate
 		cert, err := generateSelfSignedCert()
 		if err != nil {
@@ -303,7 +307,7 @@ func main() {
 		log.Printf("Domain configured (websiteName: '%s') - starting HTTP server on port %s for cloudflared...", config.Config.WebsiteName, port)
 		log.Printf("🔗 Expected to be accessed via cloudflared tunnel or reverse proxy")
 		log.Printf("🔗 Local HTTP access: http://localhost:%s", port)
-		
+
 		log.Fatal(http.ListenAndServe(":"+port, rootMux))
 	}
 }
