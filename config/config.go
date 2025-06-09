@@ -32,6 +32,10 @@ const (
 	// This acts as a safety net if browser closes or polling stops
 	PaymentExpireDelay = "120s"
 	
+	// Failsafe timeout for client-side safety net (server timeout + 3 seconds)
+	// If SSE doesn't send completion event, client triggers hard refresh
+	PaymentFailsafeTimeout = 123 * time.Second
+	
 	// Polling endpoints
 	QRPollEndpoint      = "/check-paymentlink-status"
 	TerminalPollEndpoint = "/check-terminal-payment-status"

@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
-	"math"
 
 	"github.com/a-h/templ"
 	"github.com/stripe/stripe-go/v74"
@@ -83,6 +83,7 @@ func (b *SSEBroadcaster) BroadcastPaymentUpdate(paymentID string, component temp
 	b.mutex.RUnlock()
 
 	if !exists {
+		log.Printf("[SSE] No connection found for payment %s", paymentID)
 		return
 	}
 
@@ -101,12 +102,41 @@ func (b *SSEBroadcaster) BroadcastPaymentUpdate(paymentID string, component temp
 	log.Printf("[SSE] Sent payment update for: %s", paymentID)
 }
 
+// BroadcastModalUpdate sends a payment update that replaces the entire modal content
+func (b *SSEBroadcaster) BroadcastModalUpdate(paymentID string, component templ.Component) {
+	b.mutex.RLock()
+	conn, exists := b.connections[paymentID]
+	b.mutex.RUnlock()
+
+	if !exists {
+		log.Printf("[SSE] No connection found for payment %s", paymentID)
+		return
+	}
+
+	// Render component to string
+	var buf strings.Builder
+	if err := component.Render(context.Background(), &buf); err != nil {
+		log.Printf("[SSE] Error rendering component for %s: %v", paymentID, err)
+		return
+	}
+
+	// Send SSE event that targets modal content to remove SSE container entirely
+	fmt.Fprintf(conn.Writer, "event: modal-update\n")
+	fmt.Fprintf(conn.Writer, "data: %s\n\n", buf.String())
+	conn.Flusher.Flush()
+
+	log.Printf("[SSE] Sent modal update for: %s", paymentID)
+}
+
 // PaymentSSEHandler handles SSE connections for payment updates
 func PaymentSSEHandler(w http.ResponseWriter, r *http.Request) {
 	paymentID := r.URL.Query().Get("payment_id")
 	paymentType := r.URL.Query().Get("type") // "qr" or "terminal"
 
+	log.Printf("[SSE] New connection request for %s payment: %s", paymentType, paymentID)
+
 	if paymentID == "" || paymentType == "" {
+		log.Printf("[SSE] Missing parameters: payment_id=%s, type=%s", paymentID, paymentType)
 		http.Error(w, "payment_id and type parameters required", http.StatusBadRequest)
 		return
 	}
@@ -120,19 +150,18 @@ func PaymentSSEHandler(w http.ResponseWriter, r *http.Request) {
 	// Add connection to broadcaster
 	conn := GlobalSSEBroadcaster.AddConnection(paymentID, paymentType, w)
 	if conn == nil {
+		log.Printf("[SSE] Failed to add connection for payment: %s", paymentID)
 		http.Error(w, "SSE not supported by client", http.StatusInternalServerError)
 		return
 	}
+
+	log.Printf("[SSE] Successfully established connection for %s payment: %s", paymentType, paymentID)
 
 	// Set up timeout
 	timeout := time.NewTimer(config.PaymentTimeout)
 	defer timeout.Stop()
 
-	// Periodic status checks (less frequent than old polling)
-	// Periodic status checks for real-time updates in polling mode
-	ticker := time.NewTicker(2 * time.Second) // Keep responsive for localhost polling mode
-	defer ticker.Stop()
-
+	// Wait for payment completion or timeout - no periodic progress updates
 	for {
 		select {
 		case <-conn.Done:
@@ -146,9 +175,6 @@ func PaymentSSEHandler(w http.ResponseWriter, r *http.Request) {
 			handleSSETimeout(paymentID, paymentType)
 			GlobalSSEBroadcaster.RemoveConnection(paymentID)
 			return
-		case <-ticker.C:
-			// Periodic status check (fallback when no webhooks received)
-			checkAndSendSSEUpdate(paymentID, paymentType)
 		}
 	}
 }
@@ -298,17 +324,9 @@ func createPaymentProgressComponentWithOptions(opts PaymentProgressOptions) temp
 		stopPollingAttr = `hx-trigger="none"`
 	}
 
-	// Generate the unified progress HTML using our centralized constants
-	progressHTML := fmt.Sprintf(`
-		<div class="payment-progress %s-progress" %s>
-			<h4>%s in Progress</h4>
-			<p>%s</p>
-			<p>Payment expires in <span id="countdown">%d</span> seconds</p>
-			<div class="progress-bar">
-				<div class="progress-fill" style="width: %.1f%%;"></div>
-			</div>
-			%s
-		</div>`,
+	// Generate the unified progress HTML (single line to avoid newline issues in SSE)
+	progressHTML := fmt.Sprintf(
+		`<div class="payment-progress %s-progress" %s><h4>%s in Progress</h4><p>%s</p><p>Payment expires in <span id="countdown">%d</span> seconds</p><div class="progress-bar"><div class="progress-fill" style="width: %.1f%%;"></div></div>%s</div>`,
 		opts.PaymentType,
 		stopPollingAttr,
 		getPaymentTypeDisplayString(opts.PaymentType),
@@ -698,7 +716,6 @@ func handleQRPaymentSuccess(paymentLinkID string, paymentLinkStatus services.Pay
 	}
 }
 
-
 func handleTerminalPaymentSuccess(
 	intentID string,
 	terminalState *TerminalPaymentState,
@@ -709,10 +726,19 @@ func handleTerminalPaymentSuccess(
 	// Save transaction
 	GlobalPaymentEventLogger.LogPaymentEventFromState(terminalState, PaymentEventSuccess, "")
 
-	// Clean up state and clear cart in one operation
-	GlobalPaymentStateManager.RemovePaymentAndClearCart(intentID)
-
+	// Create success component that replaces the entire modal
 	component := checkout.PaymentSuccess(intentID, terminalState.Email != "")
+
+	// Send success via SSE to replace entire modal content - this removes the SSE container
+	log.Printf("[SSE] Sending payment success for: %s", intentID)
+
+	// Create a custom SSE event that targets the modal content instead of status details
+	GlobalSSEBroadcaster.BroadcastModalUpdate(intentID, component)
+
+	// Clean up state and SSE connection
+	GlobalPaymentStateManager.RemovePaymentAndClearCart(intentID)
+	GlobalSSEBroadcaster.RemoveConnection(intentID)
+
 	return PaymentStatusResult{
 		Status:     "completed",
 		Completed:  true,

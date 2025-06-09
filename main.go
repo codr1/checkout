@@ -224,6 +224,11 @@ func main() {
 	// Stripe webhook handler: Public, but typically has its own signature verification, not session auth
 	rootMux.HandleFunc("/stripe-webhook", handlers.StripeWebhookHandler)
 
+
+	// Payment events endpoint - SSE for real-time payment updates
+	rootMux.HandleFunc("/payment-events", handlers.PaymentSSEHandler)
+
+
 	// Application-specific routes that require authentication will go into appMux
 	appMux := http.NewServeMux()
 
@@ -237,7 +242,6 @@ func main() {
 	appMux.HandleFunc("/process-payment", handlers.ProcessPaymentHandler)
 	appMux.HandleFunc("/generate-qr-code", handlers.GenerateQRCodeHandler)
 	appMux.HandleFunc("/manual-card-form", handlers.ManualCardFormHandler)
-	appMux.HandleFunc("/payment-events", handlers.PaymentSSEHandler)
 	appMux.HandleFunc("/check-paymentlink-status", handlers.CheckPaymentlinkStatusHandler)
 	appMux.HandleFunc("/cancel-payment-link", handlers.CancelPaymentLinkHandler)
 	appMux.HandleFunc("/expire-payment-link", handlers.ExpirePaymentLinkHandler)

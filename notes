@@ -1,0 +1,138 @@
+
+Great! Now I can see that the `PaymentSuccess`, `PaymentExpired`, and `PaymentCancelled` templates are defined in `receipt.templ`. Now I have enough context to create a comprehensive plan.
+
+## Comprehensive SSE Refactoring Plan
+
+Based on my analysis, here's the plan to implement your simplified SSE approach with minimal changes:
+
+### **Phase 1: Clean Up Debug Code (Immediate)** ✅ COMPLETED
+
+**Files modified:**
+1. **`main.go`** - Removed all debug SSE endpoints
+2. **`handlers/payment_polling.go`** - Kept useful `[SSE]`, `[QR]`, `[Terminal]` log markers
+
+**Changes completed:**
+- ✅ Removed `/debug-sse`, `/sse-test`, `/test-progress-sse`, `/simple-sse` endpoints
+- ✅ Removed unused `fmt` import from main.go
+- ✅ Kept core SSE infrastructure (`PaymentSSEHandler`, `GlobalSSEBroadcaster`)
+- ✅ Preserved useful subsystem logging designators as requested
+
+### **Phase 2: Simplify SSE Architecture (Core Changes)** 🔄 NEXT
+
+**Key principle:** SSE only sends completion events (success/failure/timeout). Progress bar runs independently on client-side.
+
+**Files to modify:**
+1. **`templates/checkout/progress_components.templ`**
+2. **`handlers/payment_polling.go`**
+3. **`config/config.go`** (add failsafe timeout setting)
+
+**Changes:**
+- **Remove progress updates from SSE** - no more 2-second progress broadcasts
+- **SSE only sends final states:** payment success, failure, timeout
+- **Add JavaScript countdown timer** for visual progress (non-authoritative)
+- **Add failsafe timeout trigger** at 123 seconds (TIMEOUT + 3) that does hard refresh
+
+### **Phase 3: Unified Payment Container Architecture**
+
+**Create unified payment containers for both QR and Terminal:**
+
+```
+PaymentContainer (QR or Terminal)
+├── Payment Info Display (QR code or terminal message)
+├── JavaScript Progress Bar (120s countdown, eye candy only)
+├── SSE Connection (listens for completion events only)
+├── Failsafe Timeout Trigger (123s, hard refresh)
+└── Action Buttons (Cancel)
+```
+
+**Files to modify:**
+1. **`templates/checkout/progress_components.templ`** - Create unified containers
+2. **`templates/checkout/qr_code.templ`** - Use unified container
+3. **`templates/checkout/terminal_polling.templ`** - Use unified container
+
+### **Phase 4: Implement Cancel/Timeout Logic Reuse**
+
+**Principle:** Both Cancel button and Failsafe timeout use same "hard refresh" logic.
+
+**Files to modify:**
+1. **`handlers/payment_qr.go`** - Update cancel/expire handlers  
+2. **`handlers/payment_terminal.go`** - Update cancel/expire handlers
+3. **Create new endpoint:** `/get-payment-status` for hard refresh logic
+
+**Flow:**
+- Cancel button → Hard refresh (replace SSE container) → Get current server state
+- Failsafe timeout → Hard refresh (replace SSE container) → Get current server state
+- Both use same authoritative server state lookup
+
+### **Phase 5: SSE Lifecycle Management**
+
+**Principle:** SSE connections end cleanly when payment completes, no reconnection attempts.
+
+**Files to modify:**
+1. **`handlers/payment_polling.go`** - Update SSE broadcaster
+2. **`templates/checkout/receipt.templ`** - Add SSE cleanup script
+
+**Changes:**
+- Success/failure SSE events include "final" flag to close connection
+- Client-side JavaScript stops reconnection attempts on final events
+- Clean DOM replacement prevents orphaned SSE containers
+
+### **Phase 6: Configuration Consolidation**
+
+**Files to modify:**
+1. **`config/config.go`** - Add failsafe timeout setting
+
+**New config:**
+```go
+const (
+    PaymentTimeout = 120 * time.Second      // Server timeout (authoritative)
+    PaymentFailsafeTimeout = 123 * time.Second  // Client failsafe (safety net)
+)
+```
+
+---
+
+## **Implementation Order & Dependencies**
+
+1. **Phase 1** (Debug cleanup) - ✅ COMPLETED
+2. **Phase 2** (SSE simplification) - 🔄 NEXT - Core change, affects everything else
+3. **Phase 3** (Unified containers) - Depends on Phase 2 SSE changes
+4. **Phase 4** (Cancel/timeout logic) - Depends on unified containers
+5. **Phase 5** (SSE lifecycle) - Final cleanup, depends on all previous phases
+6. **Phase 6** (Configuration) - Can be done in parallel with other phases
+
+## **Code Reuse Strategy**
+
+- **QR and Terminal payments** will use identical SSE infrastructure
+- **Cancel and timeout logic** will share the same "hard refresh" endpoint
+- **Progress display** will use common JavaScript countdown component
+- **SSE event handling** will use unified broadcaster with payment-type-agnostic events
+
+## **Benefits of This Approach**
+
+1. **No sync issues** - Client progress is just visual, server is authoritative
+2. **Simple SSE lifecycle** - Connect once, get final result, disconnect cleanly
+3. **Robust failsafe** - If SSE fails, hard refresh gets real server state
+4. **Code reuse** - QR and terminal payments use identical patterns
+5. **Easier debugging** - Clear separation between visual feedback and real state
+
+---
+
+## **Status Update**
+
+✅ **Phase 1 COMPLETED** - Debug cleanup done, codebase is clean and ready for Phase 2
+🔄 **Ready for Phase 2** - SSE simplification to implement completion-events-only approach
+
+The core SSE infrastructure is solid and preserved. Ready to proceed with simplified SSE approach.
+
+---
+
+## **TODO - Future Improvements**
+
+### **Enhanced Error Handling for SSE Connections**
+When SSE connection fails entirely (not just timeout), implement smarter failsafe timing:
+- **Current**: 123-second failsafe regardless of connection state
+- **Improvement**: Detect SSE connection failure early (10-15 seconds) and trigger hard refresh sooner
+- **Benefit**: Faster recovery from network issues or server restarts
+- **Implementation**: Add connection state monitoring to JavaScript failsafe logic
+

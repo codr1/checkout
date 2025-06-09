@@ -24,6 +24,18 @@ templ PaymentSuccess(confirmationCode string, hasContactInfo bool) {
 			Close
 		</button>
 	</div>
+	
+	<!-- Stop SSE reconnection attempts -->
+	<script>
+		// Find and close any active SSE connections to prevent reconnection
+		document.querySelectorAll('[hx-ext*="sse"]').forEach(function(el) {
+			if (el._sseSource) {
+				el._sseSource.close();
+				el.removeAttribute('hx-ext');
+				el.removeAttribute('sse-connect');
+			}
+		});
+	</script>
 }
 
 // Receipt Form Component

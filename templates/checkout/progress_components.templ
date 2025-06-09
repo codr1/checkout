@@ -17,13 +17,22 @@ type UnifiedSSEConfig struct {
 
 // UnifiedSSEContainer creates the SSE connection and expiration logic
 templ UnifiedSSEContainer(config UnifiedSSEConfig) {
-	<!-- HTMX polling for real-time updates (pure HTMX, no JavaScript needed) -->
-	<div id={ fmt.Sprintf("%s-polling-container", config.PaymentType) }
-		hx-get={ fmt.Sprintf("/check-%s-payment-status?payment_id=%s", config.PaymentType, config.PaymentID) }
-		hx-target={ config.TargetElement }
-		hx-swap="innerHTML"
-		hx-trigger="load, every 2s"
-		hx-headers='{"X-Payment-Type": "{ config.PaymentType }"}'>
+	<!-- Direct SSE connection that swaps content directly -->
+	<div id={ fmt.Sprintf("%s-sse-progress", config.PaymentType) }
+		hx-ext="sse"
+		sse-connect={ fmt.Sprintf("/payment-events?payment_id=%s&type=%s", config.PaymentID, config.PaymentType) }
+		sse-swap="payment-update"
+		hx-target={ "#" + config.PaymentType + "-payment-status-details" }
+		hx-swap="innerHTML">
+	</div>
+	
+	<!-- Separate SSE connection for modal updates -->
+	<div id={ fmt.Sprintf("%s-sse-modal", config.PaymentType) }
+		hx-ext="sse"
+		sse-connect={ fmt.Sprintf("/payment-events?payment_id=%s&type=%s", config.PaymentID, config.PaymentType) }
+		sse-swap="modal-update"
+		hx-target="#modal-content"
+		hx-swap="innerHTML">
 	</div>
 	
 	<!-- Auto-expiration trigger -->
@@ -51,7 +60,6 @@ templ UnifiedSSEContainer(config UnifiedSSEConfig) {
 		}
 	</style>
 }
-
 
 // SimpleProgressDisplay shows progress without polling (used by handlers)
 templ SimpleProgressDisplay(paymentType string, secondsRemaining int, progressWidth float64, statusMessage string) {
@@ -100,10 +108,10 @@ templ QRPaymentContainer(qrBase64 string, paymentLinkID string, totalAmount floa
 		@UnifiedSSEContainer(UnifiedSSEConfig{
 			PaymentID:      paymentLinkID,
 			PaymentType:    "qr",
-			ExpireEndpoint: "/expire-terminal-payment",
+			ExpireEndpoint: "/expire-payment-link",
 			ExpireDelay:    "120s",
-			IncludeFields:  "[name='payment_intent_id'], [name='reader_id']",
-			TargetElement:  "#terminal-payment-status-details",
+			IncludeFields:  "",
+			TargetElement:  "#qr-payment-status-details",
 		})
 		
 		<!-- Action buttons -->
@@ -133,29 +141,14 @@ templ TerminalPaymentContainer(paymentIntentID string, readerID string, totalAmo
 		if customerEmail != "" {
 			<p>Email for receipt: <strong>{ customerEmail }</strong></p>
 		}
-		
-		<!-- Loading spinner -->
-		<div class="loading-spinner-container">
-			<div class="loading-spinner"></div>
-		</div>
 
 		<!-- Hidden form fields -->
 		<input type="hidden" name="payment_intent_id" id="payment_intent_id" value={ paymentIntentID }/>
 		<input type="hidden" name="reader_id" id="reader_id" value={ readerID }/>
 
-		<!-- Status display area -->
+		<!-- Status display area - will be populated by SSE -->
 		<div id="terminal-payment-status-details">
-			<div class="payment-progress terminal-progress">
-                <h4>Terminal Payment in Progress</h4>
-                <p>Please complete the transaction on the payment terminal.</p>
-                <p>Payment expires in 
-                    <span id="countdown">120</span> seconds
-                </p>
-                <div class="progress-bar">
-                    <div class="progress-fill" style="width: 0%;"></div>
-                </div>
-                <p><small>Payment ID: { paymentIntentID }</small></p>
-            </div>
+			<!-- Empty - SSE will populate this immediately -->
 		</div>
 
 		<!-- Unified SSE configuration -->
@@ -164,7 +157,7 @@ templ TerminalPaymentContainer(paymentIntentID string, readerID string, totalAmo
 			PaymentType:    "terminal",
 			ExpireEndpoint: "/expire-terminal-payment",
 			ExpireDelay:    "120s",
-			IncludeFields:  "#payment_intent_id, #reader_id",
+			IncludeFields:  "[name='payment_intent_id'], [name='reader_id']",
 			TargetElement:  "#terminal-payment-status-details",
 		})
 
@@ -182,30 +175,6 @@ templ TerminalPaymentContainer(paymentIntentID string, readerID string, totalAmo
 			</button>
 		</div>
 	</div>
-	
-	<style>
-		.loading-spinner-container {
-			display: flex;
-			justify-content: center;
-			align-items: center;
-			margin: 20px 0;
-		}
-		.loading-spinner {
-			border: 4px solid #f3f3f3;
-			border-top: 4px solid #3498db;
-			border-radius: 50%;
-			width: 30px;
-			height: 30px;
-			animation: spin 1s linear infinite;
-		}
-		@keyframes spin {
-			0% { transform: rotate(0deg); }
-			100% { transform: rotate(360deg); }
-		}
-		.terminal-processing-info p {
-			margin: 5px 0;
-		}
-	</style>
 }
 
 // Helper function to get display name for payment type
