@@ -3,22 +3,21 @@ package handlers
 import (
 	"context"
 	"fmt"
-	"log"
 	"math"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
+
+	"checkout/config"
+	"checkout/services"
+	"checkout/templates/checkout"
+	"checkout/utils"
 
 	"github.com/a-h/templ"
 	"github.com/stripe/stripe-go/v74"
 	"github.com/stripe/stripe-go/v74/paymentintent"
 	"github.com/stripe/stripe-go/v74/paymentlink"
-
-	"checkout/config"
-	"checkout/services"
-	"checkout/templates"
-	"checkout/templates/checkout"
+	"github.com/stripe/stripe-go/v74/terminal/reader"
 )
 
 // SSEConnection represents a Server-Sent Events connection
@@ -43,6 +42,9 @@ var GlobalSSEBroadcaster = &SSEBroadcaster{
 
 // AddConnection adds a new SSE connection
 func (b *SSEBroadcaster) AddConnection(paymentID, paymentType string, w http.ResponseWriter) *SSEConnection {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		return nil
@@ -53,14 +55,11 @@ func (b *SSEBroadcaster) AddConnection(paymentID, paymentType string, w http.Res
 		Flusher:   flusher,
 		PaymentID: paymentID,
 		Type:      paymentType,
-		Done:      make(chan bool),
+		Done:      make(chan bool, 1),
 	}
 
-	b.mutex.Lock()
 	b.connections[paymentID] = conn
-	b.mutex.Unlock()
-
-	log.Printf("[SSE] New connection for %s payment: %s", paymentType, paymentID)
+	utils.Debug("sse", "New connection established", "payment_type", paymentType, "payment_id", paymentID)
 	return conn
 }
 
@@ -72,7 +71,7 @@ func (b *SSEBroadcaster) RemoveConnection(paymentID string) {
 	if conn, exists := b.connections[paymentID]; exists {
 		close(conn.Done)
 		delete(b.connections, paymentID)
-		log.Printf("[SSE] Removed connection for payment: %s", paymentID)
+		utils.Debug("sse", "Connection removed", "payment_id", paymentID)
 	}
 }
 
@@ -83,23 +82,29 @@ func (b *SSEBroadcaster) BroadcastPaymentUpdate(paymentID string, component temp
 	b.mutex.RUnlock()
 
 	if !exists {
-		log.Printf("[SSE] No connection found for payment %s", paymentID)
+		utils.Info("sse", "No connection found for payment", "payment_id", paymentID)
 		return
 	}
 
-	// Render component to string - use context.Background() instead of nil
-	var buf strings.Builder
-	if err := component.Render(context.Background(), &buf); err != nil {
-		log.Printf("[SSE] Error rendering component for %s: %v", paymentID, err)
+	// Render the component to HTML
+	html, err := templ.ToGoHTML(context.Background(), component)
+	if err != nil {
+		utils.Error("sse", "Error rendering component", "payment_id", paymentID, "error", err)
 		return
 	}
 
-	// Send SSE event - use HTMX-compatible format
-	fmt.Fprintf(conn.Writer, "event: payment-update\n")
-	fmt.Fprintf(conn.Writer, "data: %s\n\n", buf.String())
+	// Write SSE event
+	if _, err := fmt.Fprint(conn.Writer, "event: payment-update\n"); err != nil {
+		utils.Error("sse", "Error writing SSE event header", "error", err)
+		return
+	}
+	if _, err := fmt.Fprintf(conn.Writer, "data: %s\n\n", html); err != nil {
+		utils.Error("sse", "Error writing SSE data", "error", err)
+		return
+	}
+
 	conn.Flusher.Flush()
-
-	log.Printf("[SSE] Sent payment update for: %s", paymentID)
+	utils.Debug("sse", "Payment update sent", "payment_id", paymentID)
 }
 
 // BroadcastModalUpdate sends a payment update that replaces the entire modal content
@@ -109,23 +114,29 @@ func (b *SSEBroadcaster) BroadcastModalUpdate(paymentID string, component templ.
 	b.mutex.RUnlock()
 
 	if !exists {
-		log.Printf("[SSE] No connection found for payment %s", paymentID)
+		utils.Debug("sse", "No connection found for modal update", "payment_id", paymentID)
 		return
 	}
 
-	// Render component to string
-	var buf strings.Builder
-	if err := component.Render(context.Background(), &buf); err != nil {
-		log.Printf("[SSE] Error rendering component for %s: %v", paymentID, err)
+	// Render the component to HTML
+	html, err := templ.ToGoHTML(context.Background(), component)
+	if err != nil {
+		utils.Error("sse", "Error rendering component", "payment_id", paymentID, "error", err)
 		return
 	}
 
-	// Send SSE event that targets modal content to remove SSE container entirely
-	fmt.Fprintf(conn.Writer, "event: modal-update\n")
-	fmt.Fprintf(conn.Writer, "data: %s\n\n", buf.String())
+	// Write SSE event for modal update
+	if _, err := fmt.Fprint(conn.Writer, "event: modal-update\n"); err != nil {
+		utils.Error("sse", "Error writing modal-update event header", "error", err)
+		return
+	}
+	if _, err := fmt.Fprintf(conn.Writer, "data: %s\n\n", html); err != nil {
+		utils.Error("sse", "Error writing SSE data", "error", err)
+		return
+	}
+
 	conn.Flusher.Flush()
-
-	log.Printf("[SSE] Sent modal update for: %s", paymentID)
+	utils.Debug("sse", "Modal update sent", "payment_id", paymentID)
 }
 
 // PaymentSSEHandler handles SSE connections for payment updates
@@ -133,10 +144,10 @@ func PaymentSSEHandler(w http.ResponseWriter, r *http.Request) {
 	paymentID := r.URL.Query().Get("payment_id")
 	paymentType := r.URL.Query().Get("type") // "qr" or "terminal"
 
-	log.Printf("[SSE] New connection request for %s payment: %s", paymentType, paymentID)
+	utils.Debug("sse", "New connection request", "payment_type", paymentType, "payment_id", paymentID)
 
 	if paymentID == "" || paymentType == "" {
-		log.Printf("[SSE] Missing parameters: payment_id=%s, type=%s", paymentID, paymentType)
+		utils.Warn("sse", "Missing required parameters", "payment_id", paymentID, "type", paymentType)
 		http.Error(w, "payment_id and type parameters required", http.StatusBadRequest)
 		return
 	}
@@ -150,12 +161,12 @@ func PaymentSSEHandler(w http.ResponseWriter, r *http.Request) {
 	// Add connection to broadcaster
 	conn := GlobalSSEBroadcaster.AddConnection(paymentID, paymentType, w)
 	if conn == nil {
-		log.Printf("[SSE] Failed to add connection for payment: %s", paymentID)
+		utils.Error("sse", "Failed to add connection", "payment_id", paymentID, "reason", "SSE not supported by client")
 		http.Error(w, "SSE not supported by client", http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("[SSE] Successfully established connection for %s payment: %s", paymentType, paymentID)
+	utils.Debug("sse", "Connection established successfully", "payment_type", paymentType, "payment_id", paymentID)
 
 	// Set up timeout
 	timeout := time.NewTimer(config.PaymentTimeout)
@@ -179,81 +190,34 @@ func PaymentSSEHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// sendInitialSSEUpdate sends the initial progress update
-func sendInitialSSEUpdate(conn *SSEConnection, paymentID, paymentType string) {
-	state, exists := GlobalPaymentStateManager.GetPayment(paymentID)
-	if !exists {
-		return
-	}
-
-	progress := calculateProgressInfo(state.GetStartTime(), config.PaymentTimeout)
-	component := createPaymentProgressComponent(paymentID, progress, paymentType)
-
-	var buf strings.Builder
-	if err := component.Render(context.Background(), &buf); err != nil {
-		log.Printf("[SSE] Error rendering initial component: %v", err)
-		return
-	}
-
-	fmt.Fprintf(conn.Writer, "event: payment-update\n")
-	fmt.Fprintf(conn.Writer, "data: %s\n\n", buf.String())
-	conn.Flusher.Flush()
-}
-
-// checkAndSendSSEUpdate checks payment status and sends update via SSE
-func checkAndSendSSEUpdate(paymentID, paymentType string) {
-	var result PaymentStatusResult
-
-	switch paymentType {
-	case "qr":
-		result = checkQRPaymentStatus(paymentID)
-	case "terminal":
-		result = checkTerminalPaymentStatus(paymentID)
-	default:
-		return
-	}
-
-	if result.Component != nil {
-		GlobalSSEBroadcaster.BroadcastPaymentUpdate(paymentID, result.Component)
-	}
-
-	if result.ShouldStop {
-		GlobalSSEBroadcaster.RemoveConnection(paymentID)
-	}
-}
+// SSE functions removed - architecture uses event-driven completion notifications only
+// Progress display is handled by client-side JavaScript countdown
+// Completion events are triggered by webhook handlers
 
 // handleSSETimeout handles payment timeout via SSE
 func handleSSETimeout(paymentID, paymentType string) {
 	switch paymentType {
 	case "qr":
-		result := handleQRPaymentTimeout(paymentID)
-		if result.Component != nil {
-			GlobalSSEBroadcaster.BroadcastPaymentUpdate(paymentID, result.Component)
-		}
+		// QR timeout handler does its own BroadcastModalUpdate() + RemoveConnection()
+		handleQRPaymentTimeout(paymentID)
 	case "terminal":
 		// Fetch the real PaymentIntent from Stripe
 		intent, err := paymentintent.Get(paymentID, nil)
 		if err != nil {
-			log.Printf("Error fetching PaymentIntent %s for timeout handling: %v", paymentID, err)
+			utils.Error("payment", "Error fetching PaymentIntent for timeout handling", "payment_id", paymentID, "error", err)
 			// If we can't fetch it, create a minimal intent for cleanup
 			intent = &stripe.PaymentIntent{
 				ID:     paymentID,
 				Status: stripe.PaymentIntentStatusRequiresPaymentMethod,
 			}
 		}
-		result := handleTerminalPaymentTimeout(paymentID, intent)
-		if result.Component != nil {
-			GlobalSSEBroadcaster.BroadcastPaymentUpdate(paymentID, result.Component)
-		}
+		// Terminal timeout handler does its own BroadcastModalUpdate() + RemoveConnection()
+		handleTerminalPaymentTimeout(paymentID, intent)
 	}
 }
 
 // PaymentStatusResult represents the result of checking payment status
 type PaymentStatusResult struct {
-	Status     string
-	Completed  bool
-	Failed     bool
-	Expired    bool
 	Message    string
 	Component  templ.Component
 	ShouldStop bool // Whether polling should stop
@@ -317,14 +281,14 @@ func createPaymentProgressComponentWithOptions(opts PaymentProgressOptions) temp
 		additionalInfo = fmt.Sprintf("<p><small>Payment ID: %s</small></p>", opts.PaymentID)
 	}
 
-	// Generate the unified progress HTML with stop-polling trigger when final state reached
+	// Generate the progress HTML with stop-polling trigger when final state reached
 	var stopPollingAttr string
 	if opts.Progress.SecondsRemaining <= 0 {
 		// Payment has timed out, stop polling
 		stopPollingAttr = `hx-trigger="none"`
 	}
 
-	// Generate the unified progress HTML (single line to avoid newline issues in SSE)
+	// Generate the progress HTML (single line to avoid newline issues in SSE)
 	progressHTML := fmt.Sprintf(
 		`<div class="payment-progress %s-progress" %s><h4>%s in Progress</h4><p>%s</p><p>Payment expires in <span id="countdown">%d</span> seconds</p><div class="progress-bar"><div class="progress-fill" style="width: %.1f%%;"></div></div>%s</div>`,
 		opts.PaymentType,
@@ -352,16 +316,16 @@ func getPaymentTypeDisplayString(paymentType string) string {
 }
 
 // calculateProgressInfo calculates progress bar and countdown information
-func calculateProgressInfo(creationTime time.Time, timeoutDuration time.Duration) ProgressInfo {
+func calculateProgressInfo(creationTime time.Time, _ time.Duration) ProgressInfo {
 	elapsed := time.Since(creationTime)
-	remaining := timeoutDuration - elapsed
+	remaining := PAYMENT_POLLING_TIMEOUT - elapsed
 
 	secondsRemaining := int(remaining.Seconds())
 	if secondsRemaining < 0 {
 		secondsRemaining = 0
 	}
 
-	progressWidth := (elapsed.Seconds() / timeoutDuration.Seconds()) * 100
+	progressWidth := (elapsed.Seconds() / PAYMENT_POLLING_TIMEOUT.Seconds()) * 100
 	if progressWidth > 100 {
 		progressWidth = 100
 	}
@@ -378,15 +342,18 @@ func checkPaymentStatusGeneric(w http.ResponseWriter, r *http.Request, config Pa
 	paymentID := r.URL.Query().Get("payment_id")
 	if paymentID == "" {
 		// Use appropriate payment ID parameter based on type
-		if config.PaymentType == "qr" {
+		switch config.PaymentType {
+		case "qr":
 			paymentID = r.URL.Query().Get("payment_link_id")
-		} else if config.PaymentType == "terminal" {
+		case "terminal":
 			paymentID = r.URL.Query().Get("intent_id")
 		}
 	}
 
 	if paymentID == "" {
-		w.Write([]byte(`<p class="status-message">Waiting for payment information...</p>`))
+		if _, err := w.Write([]byte(`<p class="status-message">Waiting for payment information...</p>`)); err != nil {
+			utils.Error("http", "Error writing waiting response", "error", err)
+		}
 		return
 	}
 
@@ -400,8 +367,6 @@ func checkPaymentStatusGeneric(w http.ResponseWriter, r *http.Request, config Pa
 		result = checkTerminalPaymentStatus(paymentID)
 	default:
 		result = PaymentStatusResult{
-			Status:     "error",
-			Failed:     true,
 			Message:    "Unknown payment type",
 			ShouldStop: true,
 		}
@@ -414,10 +379,12 @@ func checkPaymentStatusGeneric(w http.ResponseWriter, r *http.Request, config Pa
 		if result.Component != nil {
 			w.WriteHeader(http.StatusOK)
 			if err := result.Component.Render(r.Context(), w); err != nil {
-				log.Printf("Error rendering payment result component: %v", err)
+				utils.Error("http", "Error rendering payment result component", "error", err)
 			}
 		} else {
-			w.Write([]byte(result.Message))
+			if _, err := w.Write([]byte(result.Message)); err != nil {
+				utils.Error("http", "Error writing result message", "error", err)
+			}
 		}
 		return
 	}
@@ -426,7 +393,7 @@ func checkPaymentStatusGeneric(w http.ResponseWriter, r *http.Request, config Pa
 	if result.Component != nil {
 		w.WriteHeader(http.StatusOK)
 		if err := result.Component.Render(r.Context(), w); err != nil {
-			log.Printf("Error rendering payment progress component: %v", err)
+			utils.Error("http", "Error rendering payment progress component", "error", err)
 		}
 	}
 }
@@ -453,12 +420,11 @@ func checkQRPaymentStatus(paymentLinkID string) PaymentStatusResult {
 
 	// First, check webhook cache if available
 	if cachedState, found := GetCachedPaymentState(paymentLinkID, "payment_link"); found {
-		log.Printf("[QR] Using cached state for payment link: %s, Status: %s", paymentLinkID, cachedState.Status)
+		utils.Debug("payment", "Using cached state for QR payment link", "payment_link_id", paymentLinkID, "status", cachedState.Status)
 
 		// Handle cached payment completion
 		if cachedState.Status == "completed" {
 			paymentLinkStatus := services.PaymentLinkStatus{
-				Completed:     true,
 				CustomerEmail: cachedState.Metadata["customer_email"],
 			}
 			return handleQRPaymentSuccess(paymentLinkID, paymentLinkStatus)
@@ -471,13 +437,11 @@ func checkQRPaymentStatus(paymentLinkID string) PaymentStatusResult {
 	}
 
 	// Fallback to direct Stripe API call if no cached state
-	log.Printf("[QR] No cached state found, checking Stripe API for payment link: %s", paymentLinkID)
+	utils.Debug("payment", "No cached state found, checking Stripe API", "payment_link_id", paymentLinkID)
 	paymentLinkStatus, err := services.CheckPaymentLinkStatus(paymentLinkID)
 	if err != nil {
-		log.Printf("Error checking payment link status: %v", err)
+		utils.Error("payment", "Error checking payment link status", "payment_link_id", paymentLinkID, "error", err)
 		return PaymentStatusResult{
-			Status:     "error",
-			Failed:     true,
 			Message:    "Error checking payment status",
 			ShouldStop: true,
 		}
@@ -491,7 +455,6 @@ func checkQRPaymentStatus(paymentLinkID string) PaymentStatusResult {
 	// Continue polling - render progress using our reusable function
 	component := createPaymentProgressComponent(paymentLinkID, progress, "qr")
 	return PaymentStatusResult{
-		Status:     "pending",
 		Component:  component,
 		ShouldStop: false,
 	}
@@ -499,10 +462,10 @@ func checkQRPaymentStatus(paymentLinkID string) PaymentStatusResult {
 
 // checkTerminalPaymentStatus checks terminal payment status
 func checkTerminalPaymentStatus(intentID string) PaymentStatusResult {
-	log.Printf("[Terminal] Checking status for payment intent: %s", intentID)
+	utils.Debug("payment", "Checking terminal payment status", "intent_id", intentID)
 	state, exists := GlobalPaymentStateManager.GetPayment(intentID)
 	if !exists {
-		log.Printf("[Terminal] No cached state found for PI %s", intentID)
+		utils.Debug("payment", "No cached payment state found", "intent_id", intentID)
 		// Payment session not found - render a final "session concluded" message
 		component := checkout.TerminalInteractionResultModal(
 			"Payment Session Concluded",
@@ -512,13 +475,11 @@ func checkTerminalPaymentStatus(intentID string) PaymentStatusResult {
 			"",   // no additional message
 		)
 		return PaymentStatusResult{
-			Status:     "concluded",
-			Failed:     true,
 			Component:  component,
 			ShouldStop: true,
 		}
 	}
-	log.Printf("[Terminal] Found cached state for PI %s", intentID)
+	utils.Debug("payment", "Found cached payment state", "intent_id", intentID)
 
 	terminalState := state.(*TerminalPaymentState)
 	progress := calculateProgressInfo(state.GetStartTime(), PAYMENT_POLLING_TIMEOUT)
@@ -528,7 +489,7 @@ func checkTerminalPaymentStatus(intentID string) PaymentStatusResult {
 		// Fetch the real PaymentIntent to see its actual status
 		intent, err := paymentintent.Get(intentID, nil)
 		if err != nil {
-			log.Printf("Error fetching PaymentIntent %s for timeout handling: %v", intentID, err)
+			utils.Error("payment", "Error fetching PaymentIntent for timeout handling", "intent_id", intentID, "error", err)
 			// If we can't fetch it, create a minimal intent for cleanup
 			intent = &stripe.PaymentIntent{
 				ID:     intentID,
@@ -540,7 +501,7 @@ func checkTerminalPaymentStatus(intentID string) PaymentStatusResult {
 
 	// First, check webhook cache if available
 	if cachedState, found := GetCachedPaymentState(intentID, "payment_intent"); found {
-		log.Printf("[Terminal] Using cached state for payment intent: %s, Status: %s", intentID, cachedState.Status)
+		utils.Debug("payment", "Using cached webhook state", "intent_id", intentID, "status", cachedState.Status)
 
 		// Handle cached payment success
 		if cachedState.Status == "succeeded" || cachedState.Status == "charge_succeeded" {
@@ -567,13 +528,11 @@ func checkTerminalPaymentStatus(intentID string) PaymentStatusResult {
 	}
 
 	// Fallback to direct Stripe API call if no cached state
-	log.Printf("[Terminal] No cached state found, checking Stripe API for payment intent: %s", intentID)
+	utils.Debug("payment", "No cached webhook state found, checking Stripe API", "intent_id", intentID)
 	intent, err := paymentintent.Get(intentID, nil)
 	if err != nil {
-		log.Printf("Error fetching PaymentIntent %s: %v", intentID, err)
+		utils.Error("payment", "Error fetching PaymentIntent", "intent_id", intentID, "error", err)
 		return PaymentStatusResult{
-			Status:     "error",
-			Failed:     true,
 			Message:    "Error checking payment status",
 			ShouldStop: true,
 		}
@@ -609,7 +568,6 @@ func checkTerminalPaymentStatus(intentID string) PaymentStatusResult {
 		}
 		component := createPaymentProgressComponentWithOptions(options)
 		return PaymentStatusResult{
-			Status:    "waiting_for_card",
 			Component: component,
 		}
 
@@ -639,15 +597,12 @@ func checkTerminalPaymentStatus(intentID string) PaymentStatusResult {
 		}
 		component := createPaymentProgressComponentWithOptions(options)
 		return PaymentStatusResult{
-			Status:    "processing",
 			Component: component,
 		}
 
 	default:
-		log.Printf("Unknown PaymentIntent status for terminal payment %s: %s", intentID, intent.Status)
+		utils.Warn("payment", "Unknown PaymentIntent status for terminal payment", "intent_id", intentID, "status", intent.Status)
 		return PaymentStatusResult{
-			Status:     "error",
-			Failed:     true,
 			Message:    fmt.Sprintf("Unknown payment status: %s", intent.Status),
 			ShouldStop: true,
 		}
@@ -656,43 +611,46 @@ func checkTerminalPaymentStatus(intentID string) PaymentStatusResult {
 
 // Helper functions for QR payment handling
 func handleQRPaymentTimeout(paymentLinkID string) PaymentStatusResult {
-	log.Printf("Payment link %s timed out after %v", paymentLinkID, PAYMENT_POLLING_TIMEOUT)
+	utils.Info("payment", "Payment link timed out", "payment_link_id", paymentLinkID, "timeout", PAYMENT_POLLING_TIMEOUT)
 
 	// Deactivate the payment link
 	_, err := paymentlink.Update(paymentLinkID, &stripe.PaymentLinkParams{
 		Active: stripe.Bool(false),
 	})
 	if err != nil {
-		log.Printf("Error deactivating payment link %s: %v", paymentLinkID, err)
+		utils.Error("payment", "Error deactivating payment link", "payment_link_id", paymentLinkID, "error", err)
 	}
 
-	// Clean up state
-	GlobalPaymentStateManager.RemovePayment(paymentLinkID)
-
 	// Log transaction as expired
-	GlobalPaymentEventLogger.LogPaymentEventQuick(paymentLinkID, PaymentEventExpired, "qr")
+	_ = GlobalPaymentEventLogger.LogPaymentEventQuick(paymentLinkID, PaymentEventExpired, "qr")
 
+	// Create timeout component that replaces the entire modal
 	component := checkout.PaymentExpired(paymentLinkID)
+
+	// Send timeout via SSE to replace entire modal content - this removes the SSE container
+	utils.Debug("sse", "Sending QR payment timeout", "payment_link_id", paymentLinkID)
+
+	// Use modal update to replace entire modal content
+	GlobalSSEBroadcaster.BroadcastModalUpdate(paymentLinkID, component)
+
+	// Clean up state and SSE connection
+	GlobalPaymentStateManager.RemovePayment(paymentLinkID)
+	GlobalSSEBroadcaster.RemoveConnection(paymentLinkID)
+
 	return PaymentStatusResult{
-		Status:     "expired",
-		Expired:    true,
 		Component:  component,
 		ShouldStop: true,
 	}
 }
 
 func handleQRPaymentSuccess(paymentLinkID string, paymentLinkStatus services.PaymentLinkStatus) PaymentStatusResult {
-	log.Printf("Payment link %s completed successfully", paymentLinkID)
+	utils.Info("payment", "Payment link completed successfully", "payment_link_id", paymentLinkID)
 
 	// Calculate cart summary for transaction record
-	summary, err := services.CalculateCartSummary()
-	if err != nil {
-		log.Printf("Error calculating cart summary for completed payment: %v", err)
-		summary = templates.CartSummary{} // Use empty summary to avoid nil pointer
-	}
+	summary := services.CalculateCartSummary()
 
 	// Save transaction
-	GlobalPaymentEventLogger.LogPaymentEvent(
+	_ = GlobalPaymentEventLogger.LogPaymentEvent(
 		paymentLinkID,
 		PaymentEventSuccess,
 		"qr",
@@ -701,16 +659,23 @@ func handleQRPaymentSuccess(paymentLinkID string, paymentLinkStatus services.Pay
 		paymentLinkStatus.CustomerEmail,
 	)
 
-	// Clean up state and clear cart in one operation
-	GlobalPaymentStateManager.RemovePaymentAndClearCart(paymentLinkID)
-
 	// Determine if we have contact info (customer email)
 	hasContactInfo := paymentLinkStatus.CustomerEmail != ""
 
+	// Create success component that replaces the entire modal
 	component := checkout.PaymentSuccess(paymentLinkID, hasContactInfo)
+
+	// Send success via SSE to replace entire modal content - this removes the SSE container
+	utils.Debug("sse", "Sending QR payment success", "payment_link_id", paymentLinkID)
+
+	// Use modal update to replace entire modal content (same as terminal)
+	GlobalSSEBroadcaster.BroadcastModalUpdate(paymentLinkID, component)
+
+	// Clean up state and SSE connection
+	GlobalPaymentStateManager.RemovePaymentAndClearCart(paymentLinkID)
+	GlobalSSEBroadcaster.RemoveConnection(paymentLinkID)
+
 	return PaymentStatusResult{
-		Status:     "completed",
-		Completed:  true,
 		Component:  component,
 		ShouldStop: true,
 	}
@@ -719,18 +684,18 @@ func handleQRPaymentSuccess(paymentLinkID string, paymentLinkStatus services.Pay
 func handleTerminalPaymentSuccess(
 	intentID string,
 	terminalState *TerminalPaymentState,
-	intent *stripe.PaymentIntent,
+	_ *stripe.PaymentIntent,
 ) PaymentStatusResult {
-	log.Printf("Terminal payment %s completed successfully", intentID)
+	utils.Info("payment", "Terminal payment completed successfully", "intent_id", intentID)
 
 	// Save transaction
-	GlobalPaymentEventLogger.LogPaymentEventFromState(terminalState, PaymentEventSuccess, "")
+	_ = GlobalPaymentEventLogger.LogPaymentEventFromState(terminalState, PaymentEventSuccess, "")
 
 	// Create success component that replaces the entire modal
 	component := checkout.PaymentSuccess(intentID, terminalState.Email != "")
 
 	// Send success via SSE to replace entire modal content - this removes the SSE container
-	log.Printf("[SSE] Sending payment success for: %s", intentID)
+	utils.Debug("sse", "Sending payment success", "intent_id", intentID)
 
 	// Create a custom SSE event that targets the modal content instead of status details
 	GlobalSSEBroadcaster.BroadcastModalUpdate(intentID, component)
@@ -740,42 +705,47 @@ func handleTerminalPaymentSuccess(
 	GlobalSSEBroadcaster.RemoveConnection(intentID)
 
 	return PaymentStatusResult{
-		Status:     "completed",
-		Completed:  true,
 		Component:  component,
 		ShouldStop: true,
 	}
 }
 
-func handleTerminalPaymentTimeout(intentID string, intent *stripe.PaymentIntent) PaymentStatusResult {
-	log.Printf("Terminal payment %s timed out after %v", intentID, PAYMENT_POLLING_TIMEOUT)
+func handleTerminalPaymentTimeout(intentID string, _ *stripe.PaymentIntent) PaymentStatusResult {
+	utils.Info("payment", "Terminal payment timed out", "intent_id", intentID, "timeout", PAYMENT_POLLING_TIMEOUT)
 
 	state, _ := GlobalPaymentStateManager.GetPayment(intentID)
 	terminalState := state.(*TerminalPaymentState)
 
 	// Log transaction as expired
-	GlobalPaymentEventLogger.LogPaymentEventFromState(terminalState, PaymentEventExpired, "")
+	_ = GlobalPaymentEventLogger.LogPaymentEventFromState(terminalState, PaymentEventExpired, "")
 
-	// Clean up state
-	GlobalPaymentStateManager.RemovePayment(intentID)
-
+	// Create timeout component that replaces the entire modal
 	component := checkout.TerminalInteractionResultModal(
 		"Payment Timed Out",
-		"Customer did not present payment method within 120 seconds.",
+		fmt.Sprintf("Customer did not present payment method within %.0f seconds.", config.PaymentTimeout.Seconds()),
 		intentID,
 		true, // hasCloseButton
 		"",   // no additional message
 	)
+
+	// Send timeout via SSE to replace entire modal content - this removes the SSE container
+	utils.Debug("sse", "Sending terminal payment timeout", "intent_id", intentID)
+
+	// Use modal update to replace entire modal content
+	GlobalSSEBroadcaster.BroadcastModalUpdate(intentID, component)
+
+	// Clean up state and SSE connection
+	GlobalPaymentStateManager.RemovePayment(intentID)
+	GlobalSSEBroadcaster.RemoveConnection(intentID)
+
 	return PaymentStatusResult{
-		Status:     "expired",
-		Failed:     true,
 		Component:  component,
 		ShouldStop: true,
 	}
 }
 
 func handleTerminalPaymentFailure(intentID string, intent *stripe.PaymentIntent) PaymentStatusResult {
-	log.Printf("Terminal payment %s failed with status: %s", intentID, intent.Status)
+	utils.Info("payment", "Terminal payment failed", "intent_id", intentID, "status", intent.Status)
 
 	state, _ := GlobalPaymentStateManager.GetPayment(intentID)
 	terminalState := state.(*TerminalPaymentState)
@@ -786,17 +756,175 @@ func handleTerminalPaymentFailure(intentID string, intent *stripe.PaymentIntent)
 		failureMessage = intent.LastPaymentError.Msg
 	}
 
-	// Log transaction as failed using the unified event logger
-	GlobalPaymentEventLogger.LogPaymentEventFromState(terminalState, PaymentEventFailed, "")
+	// Log transaction as failed
+	_ = GlobalPaymentEventLogger.LogPaymentEventFromState(terminalState, PaymentEventFailed, "")
 
-	// Clean up state
-	GlobalPaymentStateManager.RemovePayment(intentID)
-
+	// Create failure component that replaces the entire modal
 	component := checkout.PaymentDeclinedModal(failureMessage, intentID)
+
+	// Send failure via SSE to replace entire modal content - this removes the SSE container
+	utils.Debug("sse", "Sending terminal payment failure", "intent_id", intentID)
+
+	// Use modal update to replace entire modal content
+	GlobalSSEBroadcaster.BroadcastModalUpdate(intentID, component)
+
+	// Clean up state and SSE connection
+	GlobalPaymentStateManager.RemovePayment(intentID)
+	GlobalSSEBroadcaster.RemoveConnection(intentID)
+
 	return PaymentStatusResult{
-		Status:     "failed",
-		Failed:     true,
 		Component:  component,
 		ShouldStop: true,
 	}
+}
+
+// GetPaymentStatusHandler - endpoint for checking payment status
+// Used by failsafe timeout and can be used for any payment status check
+func GetPaymentStatusHandler(w http.ResponseWriter, r *http.Request) {
+	paymentType := r.URL.Query().Get("type")
+	if paymentType == "" {
+		paymentType = r.FormValue("type")
+	}
+
+	if paymentType == "" {
+		http.Error(w, "type parameter required (qr or terminal)", http.StatusBadRequest)
+		return
+	}
+
+	switch paymentType {
+	case "qr":
+		config := PaymentPollingConfig{
+			PaymentType:     "qr",
+			TimeoutDuration: PAYMENT_POLLING_TIMEOUT,
+		}
+		checkPaymentStatusGeneric(w, r, config)
+	case "terminal":
+		config := PaymentPollingConfig{
+			PaymentType:     "terminal",
+			TimeoutDuration: PAYMENT_POLLING_TIMEOUT,
+		}
+		checkPaymentStatusGeneric(w, r, config)
+	default:
+		http.Error(w, "invalid payment type, must be 'qr' or 'terminal'", http.StatusBadRequest)
+	}
+}
+
+// CancelOrRefreshPaymentHandler - endpoint for cancel + hard refresh
+// Cancels the payment server-side, then returns current state (like GetPaymentStatusHandler)
+// Used by both cancel buttons and timeout handling for consistent behavior
+func CancelOrRefreshPaymentHandler(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Error parsing form", http.StatusBadRequest)
+		return
+	}
+
+	paymentID := r.FormValue("payment_id")
+	paymentType := r.FormValue("type")
+
+	// Also check URL parameters as fallback
+	if paymentID == "" {
+		paymentID = r.URL.Query().Get("payment_id")
+	}
+	if paymentType == "" {
+		paymentType = r.URL.Query().Get("type")
+	}
+
+	if paymentID == "" || paymentType == "" {
+		http.Error(w, "payment_id and type parameters required", http.StatusBadRequest)
+		return
+	}
+
+	utils.Info("payment", "Starting cancel+refresh", "payment_type", paymentType, "payment_id", paymentID)
+
+	// Step 1: Cancel the payment server-side
+	cancelSuccess := cancelPaymentServerSide(paymentID, paymentType)
+	if cancelSuccess {
+		utils.Info("payment", "Successfully cancelled payment in cancel/refresh", "payment_type", paymentType, "payment_id", paymentID)
+	} else {
+		utils.Warn("payment", "Cancel attempt failed in cancel/refresh, continuing with refresh", "payment_type", paymentType, "payment_id", paymentID)
+	}
+
+	// Step 2: Return current state using existing hard refresh logic
+	// This reuses the exact same logic as GetPaymentStatusHandler
+	switch paymentType {
+	case "qr":
+		config := PaymentPollingConfig{
+			PaymentType:     "qr",
+			TimeoutDuration: PAYMENT_POLLING_TIMEOUT,
+		}
+		checkPaymentStatusGeneric(w, r, config)
+	case "terminal":
+		config := PaymentPollingConfig{
+			PaymentType:     "terminal",
+			TimeoutDuration: PAYMENT_POLLING_TIMEOUT,
+		}
+		checkPaymentStatusGeneric(w, r, config)
+	default:
+		http.Error(w, "invalid payment type, must be 'qr' or 'terminal'", http.StatusBadRequest)
+	}
+}
+
+// cancelPaymentServerSide attempts to cancel a payment server-side
+// Returns true if cancellation succeeded, false if it failed (but that's ok)
+func cancelPaymentServerSide(paymentID, paymentType string) bool {
+	switch paymentType {
+	case "qr":
+		return cancelQRPaymentServerSide(paymentID)
+	case "terminal":
+		return cancelTerminalPaymentServerSide(paymentID)
+	default:
+		utils.Warn("payment", "Unknown payment type in cancel operation", "payment_type", paymentType)
+		return false
+	}
+}
+
+// cancelQRPaymentServerSide cancels a QR payment link
+func cancelQRPaymentServerSide(paymentLinkID string) bool {
+	// Deactivate the payment link in Stripe
+	_, err := paymentlink.Update(paymentLinkID, &stripe.PaymentLinkParams{Active: stripe.Bool(false)})
+	if err != nil {
+		utils.Error("payment", "Error cancelling QR payment link", "payment_link_id", paymentLinkID, "error", err)
+		return false
+	}
+
+	// Log the cancellation
+	_ = GlobalPaymentEventLogger.LogPaymentEventQuick(paymentLinkID, PaymentEventCancelled, "qr")
+
+	utils.Info("payment", "Successfully cancelled QR payment link", "payment_link_id", paymentLinkID)
+	return true
+}
+
+// cancelTerminalPaymentServerSide cancels a terminal payment
+func cancelTerminalPaymentServerSide(paymentIntentID string) bool {
+	state, found := GlobalPaymentStateManager.GetPayment(paymentIntentID)
+	if !found {
+		utils.Debug("payment", "Terminal payment not found in active states during cancel", "payment_intent_id", paymentIntentID)
+		return false // Not found, but that's ok - might already be concluded
+	}
+
+	terminalState, ok := state.(*TerminalPaymentState)
+	if !ok {
+		utils.Error("payment", "Payment is not a terminal payment during cancel", "payment_id", paymentIntentID)
+		return false
+	}
+
+	// Try to cancel the reader action first
+	_, err := reader.CancelAction(terminalState.ReaderID, &stripe.TerminalReaderCancelActionParams{})
+	if err != nil {
+		utils.Warn("payment", "Error cancelling reader action", "payment_intent_id", paymentIntentID, "reader_id", terminalState.ReaderID, "error", err)
+		// Continue anyway - try to cancel the payment intent
+	}
+
+	// Cancel the Payment Intent
+	_, cancelErr := paymentintent.Cancel(paymentIntentID, nil)
+	if cancelErr != nil {
+		utils.Error("payment", "Error cancelling PaymentIntent", "payment_intent_id", paymentIntentID, "error", cancelErr)
+		return false
+	}
+
+	// Log the cancellation
+	_ = GlobalPaymentEventLogger.LogPaymentEventFromState(terminalState, PaymentEventCancelled, "")
+
+	utils.Info("payment", "Successfully cancelled terminal payment", "payment_intent_id", paymentIntentID)
+	return true
 }

@@ -1,7 +1,7 @@
 package checkout
 
 // TerminalProcessingDisplay shows a message while terminal payment is processing
-// Now uses the unified terminal payment container
+// Uses the terminal payment container
 templ TerminalProcessingDisplay(paymentIntentID, readerID string, totalAmount float64, customerEmail string) {
 	@TerminalPaymentContainer(paymentIntentID, readerID, totalAmount, customerEmail)
 }

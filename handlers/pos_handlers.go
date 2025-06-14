@@ -2,11 +2,12 @@ package handlers
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 
 	"checkout/services"
 	"checkout/templates/pos"
+	"checkout/utils"
+
 	"github.com/stripe/stripe-go/v74/terminal/reader"
 )
 
@@ -41,41 +42,42 @@ func POSHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if newSelectedReaderID != "" {
-			log.Printf(
-				"[POSHandler] No valid reader selected or previous selection invalid. Defaulting to reader ID: %s",
-				newSelectedReaderID,
-			)
+			utils.Debug("pos", "Defaulting to reader due to invalid selection",
+				"new_reader_id", newSelectedReaderID, "previous_reader_id", currentSelectedReaderID)
 			services.AppState.SelectedReaderID = newSelectedReaderID
 			currentSelectedReaderID = newSelectedReaderID
 		} else if len(availableReaders) > 0 {
 			// This case means a reader was selected (first in list) but might be offline.
 			// services.AppState.SelectedReaderID would have been set above.
 			// currentSelectedReaderID is already updated.
-			log.Printf("[POSHandler] No online readers. Defaulted to first available reader ID: %s", currentSelectedReaderID)
+			utils.Warn("pos", "No online readers available - using first reader", "reader_id", currentSelectedReaderID)
 		} else {
-			log.Println("[POSHandler] No readers available to select.")
+			utils.Warn("pos", "No readers available to select")
 			// currentSelectedReaderID remains ""
 			services.AppState.SelectedReaderID = "" // Ensure it's cleared if no readers
 		}
 	} else {
-		log.Printf("[POSHandler] Using previously selected and valid reader ID: %s", currentSelectedReaderID)
+		utils.Debug("pos", "Using previously selected valid reader", "reader_id", currentSelectedReaderID)
 	}
 
 	component := pos.Page(availableReaders, currentSelectedReaderID)
-	component.Render(r.Context(), w)
+	if err := component.Render(r.Context(), w); err != nil {
+		utils.Error("pos", "Error rendering POS layout", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
 }
 
 // SetSelectedReaderHandler handles the request to change the currently selected Stripe Terminal reader.
 func SetSelectedReaderHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		log.Printf("[SetSelectedReaderHandler] Error parsing form: %v", err)
+		utils.Error("pos", "Error parsing form in SetSelectedReaderHandler", "error", err)
 		http.Error(w, "Error parsing form", http.StatusBadRequest)
 		return
 	}
 
 	readerID := r.FormValue("reader_id")
 	if readerID == "" {
-		log.Println("[SetSelectedReaderHandler] reader_id is empty")
+		utils.Warn("pos", "SetSelectedReaderHandler called with empty reader_id")
 		w.Header().Set("HX-Trigger", `{"showToast": "No reader ID provided"}`)
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -95,14 +97,14 @@ func SetSelectedReaderHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !isValidReader {
-		log.Printf("[SetSelectedReaderHandler] Invalid reader_id: %s", readerID)
+		utils.Warn("pos", "Invalid reader_id provided to SetSelectedReaderHandler", "reader_id", readerID)
 		w.Header().Set("HX-Trigger", `{"showToast": "Invalid reader selected"}`)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
 	services.AppState.SelectedReaderID = readerID
-	log.Printf("[SetSelectedReaderHandler] Stripe Terminal reader selected: %s (ID: %s)", selectedReaderLabel, readerID)
+	utils.Info("pos", "Stripe Terminal reader selected", "reader_id", readerID, "reader_label", selectedReaderLabel)
 
 	toastMessage := fmt.Sprintf("Reader '%s' selected.", selectedReaderLabel)
 	w.Header().Set("HX-Trigger", fmt.Sprintf(`{"showToastSuccess": %q}`, toastMessage))
@@ -130,7 +132,7 @@ func ClearTerminalTransactionHandler(w http.ResponseWriter, r *http.Request) {
 	// This attempts to cancel any ongoing transaction
 	_, err := reader.CancelAction(selectedReaderID, nil)
 	if err != nil {
-		log.Printf("[ClearTerminalTransactionHandler] Error canceling terminal action: %v", err)
+		utils.Warn("pos", "Error canceling terminal action during clear", "reader_id", selectedReaderID, "error", err)
 		// Even if there's an error (e.g., no action to cancel), we'll still clear our internal state
 	}
 
@@ -138,8 +140,8 @@ func ClearTerminalTransactionHandler(w http.ResponseWriter, r *http.Request) {
 	// This clears all payment states and the cart
 	GlobalPaymentStateManager.ClearAllAndClearCart()
 
-	log.Printf("[ClearTerminalTransactionHandler] Terminal transaction cleared for reader: %s", selectedReaderID)
-	
+	utils.Info("pos", "Terminal transaction cleared", "reader_id", selectedReaderID)
+
 	w.Header().Set("HX-Trigger", `{"showToast": "Terminal transaction cleared successfully"}`)
 	w.WriteHeader(http.StatusOK)
 }

@@ -205,6 +205,30 @@ For testing, use Stripe's test card numbers:
 - `4000 0000 0000 9995` - Requires authentication
 - `4000 0000 0000 0341` - Payment fails
 
+## Receipt System
+
+The system provides automatic email receipts via Stripe and optional SMS receipts via AWS SNS.
+
+### Email Receipts
+- Automatically sent by Stripe when customer email is provided
+- No configuration required
+
+### SMS Receipts (Optional)
+To enable SMS receipts, configure AWS SNS credentials:
+
+1. [Create AWS Account](https://aws.amazon.com/getting-started/)
+2. [Create IAM User with SNS permissions](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_users_create.html)
+3. Add credentials to your configuration during setup or in `./data/config.json`:
+   ```json
+   {
+     "awsAccessKeyId": "your_access_key",
+     "awsSecretAccessKey": "your_secret_key", 
+     "awsRegion": "us-east-1"
+   }
+   ```
+
+When configured, customers can choose email, SMS, or both after completing payment.
+
 ## Transaction Recording
 
 All transactions are saved in CSV files compatible with QuickBooks:

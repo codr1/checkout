@@ -43,46 +43,17 @@ When handling payment completion, we have two options:
 
 **Decision**: We're using a custom success URL to maintain consistent UX and provide receipt options.
 
-## Stripe Tax Implementation
-
-To replace the hardcoded tax rate with Stripe Tax:
-
-1. **Setup in Stripe Dashboard**
-   - Enable Stripe Tax in the dashboard
-   - Configure tax registration information
-   - Set up tax calculation rules
-
-2. **Code Implementation**
-   - Use tax calculation APIs when creating PaymentIntents/PaymentLinks
-   - Include customer location data for proper tax calculation
-   - Utilize tax rates returned by Stripe instead of hardcoded values
-
 ## TODOs for Production-Ready Stripe Integration
 
 1. **Webhook Enhancement**
-   - Implement proper error handling and retries for webhook processing
    - Add persistent storage for webhook events to prevent duplicate processing
-   - Implement background worker for cleanup of abandoned payment intents
    - Add monitoring and alerting for payment system health
 
 2. **Security Enhancements**
-   - Implement HTTPS for all payment-related traffic
    - Add IP-based rate limiting for the webhook endpoint
    - Implement idempotency keys for all Stripe API calls
    - Regularly rotate Stripe API keys and webhook secrets
 
-3. **User Experience**
-   - Improve error handling and user feedback for failed payments
-   - Add automatic receipt generation and delivery
-   - Implement payment confirmation emails/SMS
-
-4. **Infrastructure**
+3. **Infrastructure**
    - Set up a separate webhook URL for test vs. production mode
-   - Implement proper logging and monitoring for payment flows
    - Add metrics collection for payment success/failure rates
-
-5. **Production Requirements**
-   - Replace hardcoded localhost URL with configurable domain
-   - Implement proper authentication instead of hardcoded PIN
-   - Replace `http` with `https` for all payment-related URLs
-   - Ensure proper error handling for production traffic

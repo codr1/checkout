@@ -3,10 +3,12 @@ package checkout
 import (
 	"fmt"
 	"strconv"
+	
+	"checkout/config"
 )
 
-// UnifiedSSEConfig holds all configuration for SSE and expiration
-type UnifiedSSEConfig struct {
+// PaymentSSEConfig holds all configuration for SSE and expiration
+type PaymentSSEConfig struct {
 	PaymentID      string
 	PaymentType    string  // "qr" or "terminal"
 	ExpireEndpoint string
@@ -15,50 +17,108 @@ type UnifiedSSEConfig struct {
 	TargetElement  string  // e.g. "#payment-status-details"
 }
 
-// UnifiedSSEContainer creates the SSE connection and expiration logic
-templ UnifiedSSEContainer(config UnifiedSSEConfig) {
-	<!-- Direct SSE connection that swaps content directly -->
-	<div id={ fmt.Sprintf("%s-sse-progress", config.PaymentType) }
+// PaymentSSEContainer creates the SSE connection and expiration logic
+templ PaymentSSEContainer(sseConfig PaymentSSEConfig) {
+	<!-- SSE connection for completion events only -->
+	<div id={ fmt.Sprintf("%s-sse-progress", sseConfig.PaymentType) }
 		hx-ext="sse"
-		sse-connect={ fmt.Sprintf("/payment-events?payment_id=%s&type=%s", config.PaymentID, config.PaymentType) }
+		sse-connect={ fmt.Sprintf("/payment-events?payment_id=%s&type=%s", sseConfig.PaymentID, sseConfig.PaymentType) }
 		sse-swap="payment-update"
-		hx-target={ "#" + config.PaymentType + "-payment-status-details" }
+		hx-target={ "#" + sseConfig.PaymentType + "-payment-status-details" }
 		hx-swap="innerHTML">
 	</div>
 	
-	<!-- Separate SSE connection for modal updates -->
-	<div id={ fmt.Sprintf("%s-sse-modal", config.PaymentType) }
+	<!-- SSE connection for modal replacement on completion -->
+	<div id={ fmt.Sprintf("%s-sse-modal", sseConfig.PaymentType) }
 		hx-ext="sse"
-		sse-connect={ fmt.Sprintf("/payment-events?payment_id=%s&type=%s", config.PaymentID, config.PaymentType) }
+		sse-connect={ fmt.Sprintf("/payment-events?payment_id=%s&type=%s", sseConfig.PaymentID, sseConfig.PaymentType) }
 		sse-swap="modal-update"
 		hx-target="#modal-content"
 		hx-swap="innerHTML">
 	</div>
 	
-	<!-- Auto-expiration trigger -->
-	if config.ExpireEndpoint != "" && config.IncludeFields != "" {
+	<!-- Auto-expiration trigger (server timeout) -->
+	if sseConfig.ExpireEndpoint != "" && sseConfig.IncludeFields != "" {
 		<div class="hidden-action-trigger"
-			hx-post={ config.ExpireEndpoint }
-			hx-include={ config.IncludeFields }
+			hx-post={ sseConfig.ExpireEndpoint }
+			hx-include={ sseConfig.IncludeFields }
 			hx-target="#modal-content"
 			hx-swap="innerHTML"
-			hx-trigger={ fmt.Sprintf("load delay:%s", config.ExpireDelay) }>
+			hx-trigger={ fmt.Sprintf("load delay:%s", sseConfig.ExpireDelay) }>
 		</div>
-	} else if config.ExpireEndpoint != "" {
+	} else if sseConfig.ExpireEndpoint != "" {
 		<div class="hidden-action-trigger"
-			hx-post={ config.ExpireEndpoint }
-			hx-vals={ "{\"payment_link_id\": \"" + config.PaymentID + "\"}" }
+			hx-post={ sseConfig.ExpireEndpoint }
+			hx-vals={ "{\"payment_link_id\": \"" + sseConfig.PaymentID + "\"}" }
 			hx-target="#modal-content"
 			hx-swap="innerHTML"
-			hx-trigger={ fmt.Sprintf("load delay:%s", config.ExpireDelay) }>
+			hx-trigger={ fmt.Sprintf("load delay:%s", sseConfig.ExpireDelay) }>
 		</div>
 	}
+	
+	<!-- Failsafe timeout trigger (SSE safety net) -->
+	<div class="hidden-action-trigger"
+		hx-get="/get-payment-status"
+		hx-vals={ "{\"payment_id\": \"" + sseConfig.PaymentID + "\", \"type\": \"" + sseConfig.PaymentType + "\"}" }
+		hx-target="#modal-content"
+		hx-swap="innerHTML"
+		hx-trigger={ fmt.Sprintf("load delay:%ds", config.GetFailsafeTimeoutSeconds()) }>
+	</div>
 	
 	<style>
 		.hidden-action-trigger {
 			display: none;
 		}
 	</style>
+}
+
+// PaymentStatusArea creates the standardized status display with progress
+templ PaymentStatusArea(paymentType, paymentID, additionalInfo string) {
+	<div id={ paymentType + "-payment-status-details" }>
+		<div class={ fmt.Sprintf("payment-progress %s-progress", paymentType) }>
+			<h4>{ getPaymentTypeDisplay(paymentType) } in Progress</h4>
+			if paymentType == "qr" {
+				<p>Waiting for QR code scan...</p>
+			} else if paymentType == "terminal" {
+				<p>Please complete the transaction on the payment terminal</p>
+			}
+			<p>Payment expires in <span id={ fmt.Sprintf("%s-countdown", paymentType) }>{ strconv.Itoa(config.GetPaymentTimeoutSeconds()) }</span> seconds</p>
+			<div class="progress-bar">
+				<div class="progress-fill" id={ fmt.Sprintf("%s-progress-fill", paymentType) } style="width: 0%;"></div>
+			</div>
+			<p><small>{ additionalInfo }</small></p>
+		</div>
+	</div>
+}
+
+// PaymentInfo displays payment amount and customer email consistently
+templ PaymentInfo(totalAmount float64, customerEmail string) {
+	<div class="payment-info">
+		<p class="payment-amount">
+			Total Amount: <strong>${ fmt.Sprintf("%.2f", totalAmount) }</strong>
+		</p>
+		if customerEmail != "" {
+			<p class="customer-email">
+				Receipt will be sent to: <strong>{ customerEmail }</strong>
+			</p>
+		}
+	</div>
+}
+
+// PaymentCancelButton - unified cancel button for both QR and Terminal payments
+templ PaymentCancelButton(paymentType string, paymentID string, includeFields string, confirmMessage string) {
+	<button
+		type="button"
+		class="cancel-btn"
+		hx-post="/cancel-or-refresh-payment"
+		hx-target="#modal-content"
+		hx-swap="innerHTML"
+		hx-include={ includeFields }
+		hx-confirm={ confirmMessage }
+		hx-vals={ fmt.Sprintf(`{"payment_id": "%s", "type": "%s"}`, paymentID, paymentType) }
+	>
+		Cancel Payment
+	</button>
 }
 
 // SimpleProgressDisplay shows progress without polling (used by handlers)
@@ -72,108 +132,82 @@ templ SimpleProgressDisplay(paymentType string, secondsRemaining int, progressWi
 	</div>
 }
 
-// QRPaymentContainer - SSE-powered real-time payment updates
+// QRPaymentContainer - Payment container for QR code payments
 templ QRPaymentContainer(qrBase64 string, paymentLinkID string, totalAmount float64, customerEmail string) {
-	<div class="qr-payment-container" id="payment-container">
-		<h3>Payment QR Code</h3>
+	<div class="payment-container qr-payment" id="qr-payment-container">
+		<h3>QR Code Payment</h3>
 		<div class="qr-code-display">
 			<img src={ "data:image/png;base64," + qrBase64 } alt="Payment QR Code" class="qr-code-image"/>
 			<p class="qr-instructions">
 				Scan this QR code with your camera app to pay securely.
 			</p>
-			<p class="payment-amount">
-				Total Amount: <strong>${ fmt.Sprintf("%.2f", totalAmount) }</strong>
-			</p>
-			if customerEmail != "" {
-				<p class="customer-email">
-					Receipt will be sent to: <strong>{ customerEmail }</strong>
-				</p>
-			}
+			@PaymentInfo(totalAmount, customerEmail)
 		</div>
 		
-		<!-- Status display area that will be updated by SSE -->
-		<div id="qr-payment-status-details">
-			<div class="payment-progress qr-progress">
-				<h4>QR Code Payment in Progress</h4>
-				<p>Waiting for QR code scan...</p>
-				<p>Payment expires in <span id="countdown">120</span> seconds</p>
-				<div class="progress-bar">
-					<div class="progress-fill" style="width: 0%;"></div>
-				</div>
-				<p><small>Payment ID: { paymentLinkID }</small></p>
-			</div>
-		</div>
+		<!-- Payment status with progress display -->
+		@PaymentStatusArea("qr", paymentLinkID, fmt.Sprintf("Payment ID: %s", paymentLinkID))
+		
+		<!-- JavaScript countdown timer (visual only) -->
+		<script src="/static/js/payment-countdown.js"></script>
+		<script>
+			document.addEventListener('DOMContentLoaded', function() {
+				if (document.getElementById('qr-countdown') && document.getElementById('qr-progress-fill')) {
+					initPaymentCountdown('qr-countdown', 'qr-progress-fill', { strconv.Itoa(config.GetPaymentTimeoutSeconds()) });
+				}
+			});
+		</script>
 
-		<!-- Unified SSE configuration -->
-		@UnifiedSSEContainer(UnifiedSSEConfig{
+		<!-- SSE configuration -->
+		@PaymentSSEContainer(PaymentSSEConfig{
 			PaymentID:      paymentLinkID,
 			PaymentType:    "qr",
-			ExpireEndpoint: "/expire-payment-link",
-			ExpireDelay:    "120s",
+			ExpireEndpoint: "/cancel-or-refresh-payment",
+			ExpireDelay:    config.PaymentExpireDelay,
 			IncludeFields:  "",
 			TargetElement:  "#qr-payment-status-details",
 		})
 		
 		<!-- Action buttons -->
-		<div class="payment-actions">
-			<button 
-				type="button" 
-				class="cancel-btn" 
-				hx-post="/cancel-payment-link"
-				hx-vals={ "{\"payment_link_id\": \"" + paymentLinkID + "\"}" }
-				hx-target="#modal-content"
-				hx-swap="innerHTML"
-				hx-confirm="Are you sure you want to cancel this payment?"
-			>
-				Cancel Payment
-			</button>
-		</div>
+		@PaymentCancelButton("qr", paymentLinkID, "", "Are you sure you want to cancel this payment?")
 	</div>
 }
 
-
-// TerminalPaymentContainer creates the complete terminal payment UI with SSE
+// TerminalPaymentContainer - payment container for terminal payments
 templ TerminalPaymentContainer(paymentIntentID string, readerID string, totalAmount float64, customerEmail string) {
-	<div class="terminal-processing-container" id="terminal-payment-status-container">
-		<h3>Processing Payment on Terminal</h3>
+	<div class="payment-container terminal-payment" id="terminal-payment-container">
+		<h3>Terminal Payment</h3>
 		<p>Please complete the transaction on the payment terminal.</p>
-		<p>Total Amount: <strong>${ fmt.Sprintf("%.2f", totalAmount) }</strong></p>
-		if customerEmail != "" {
-			<p>Email for receipt: <strong>{ customerEmail }</strong></p>
-		}
+		@PaymentInfo(totalAmount, customerEmail)
 
 		<!-- Hidden form fields -->
 		<input type="hidden" name="payment_intent_id" id="payment_intent_id" value={ paymentIntentID }/>
 		<input type="hidden" name="reader_id" id="reader_id" value={ readerID }/>
 
-		<!-- Status display area - will be populated by SSE -->
-		<div id="terminal-payment-status-details">
-			<!-- Empty - SSE will populate this immediately -->
-		</div>
+		<!-- Payment status with progress display -->
+		@PaymentStatusArea("terminal", paymentIntentID, fmt.Sprintf("Reader: %s | Payment ID: %s", readerID, paymentIntentID))
+		
+		<!-- JavaScript countdown timer (visual only) -->
+		<script src="/static/js/payment-countdown.js"></script>
+		<script>
+			document.addEventListener('DOMContentLoaded', function() {
+				if (document.getElementById('terminal-countdown') && document.getElementById('terminal-progress-fill')) {
+					initPaymentCountdown('terminal-countdown', 'terminal-progress-fill', { strconv.Itoa(config.GetPaymentTimeoutSeconds()) });
+				}
+			});
+		</script>
 
-		<!-- Unified SSE configuration -->
-		@UnifiedSSEContainer(UnifiedSSEConfig{
+		<!-- SSE configuration -->
+		@PaymentSSEContainer(PaymentSSEConfig{
 			PaymentID:      paymentIntentID,
 			PaymentType:    "terminal",
-			ExpireEndpoint: "/expire-terminal-payment",
-			ExpireDelay:    "120s",
+			ExpireEndpoint: "/cancel-or-refresh-payment",
+			ExpireDelay:    config.PaymentExpireDelay,
 			IncludeFields:  "[name='payment_intent_id'], [name='reader_id']",
 			TargetElement:  "#terminal-payment-status-details",
 		})
 
 		<!-- Cancel button -->
-		<div class="modal-footer">
-			<button
-				type="button"
-				class="cancel-btn"
-				hx-post="/cancel-terminal-payment"
-				hx-include="#payment_intent_id, #reader_id" 
-				hx-target="#modal-content"                 
-				hx-swap="innerHTML"
-			>
-				Cancel Payment
-			</button>
-		</div>
+		@PaymentCancelButton("terminal", paymentIntentID, "#payment_intent_id, #reader_id", "Are you sure you want to cancel this payment?")
 	</div>
 }
 

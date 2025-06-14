@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -24,19 +23,10 @@ func ServicesHandler(w http.ResponseWriter, r *http.Request) {
 
 // CartHandler renders the cart contents
 func CartHandler(w http.ResponseWriter, r *http.Request) {
-	summary, err := services.CalculateCartSummary()
-	if err != nil {
-		log.Printf("Error calculating cart summary: %v", err)
-
-		// Send sanitized error message and set response headers in one line
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("HX-Trigger", fmt.Sprintf(`{"showToast": %q}`, "Tax calculation failed. Please try again."))
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
+	summary := services.CalculateCartSummary()
 
 	component := pos.CartView(services.AppState.CurrentCart, summary)
-	err = component.Render(r.Context(), w)
+	err := component.Render(r.Context(), w)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}

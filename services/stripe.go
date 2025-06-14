@@ -3,7 +3,6 @@ package services
 import (
 	"errors"
 	"fmt"
-	"log"
 
 	"github.com/stripe/stripe-go/v74"
 	"github.com/stripe/stripe-go/v74/paymentlink"
@@ -12,6 +11,8 @@ import (
 
 	"checkout/config"
 	"checkout/templates"
+	"checkout/utils"
+
 	"github.com/stripe/stripe-go/v74/checkout/session"
 )
 
@@ -33,11 +34,7 @@ func EnsureServiceHasPriceID(service *templates.Service) (bool, error) {
 		p, err := product.Get(service.StripeProductID, nil)
 		if err != nil {
 			if stripeErr, ok := err.(*stripe.Error); ok && stripeErr.Code == stripe.ErrorCodeResourceMissing {
-				log.Printf(
-					"Stripe Product ID '%s' for service '%s' not found. Will create a new one.",
-					service.StripeProductID,
-					service.Name,
-				)
+				utils.Debug("stripe", "Stripe Product ID not found, will create new one", "product_id", service.StripeProductID, "service", service.Name)
 				service.StripeProductID = "" // Mark for creation
 				service.PriceID = ""         // Old PriceID is definitely invalid
 			} else {
@@ -46,7 +43,7 @@ func EnsureServiceHasPriceID(service *templates.Service) (bool, error) {
 			}
 		} else if p == nil || !p.Active {
 			// Product found but is nil (shouldn't happen if no error) or inactive
-			log.Printf("Stripe Product ID '%s' for service '%s' is inactive or invalid. Will create a new one.", service.StripeProductID, service.Name)
+			utils.Debug("stripe", "Stripe Product ID is inactive or invalid, will create new one", "product_id", service.StripeProductID, "service", service.Name)
 			service.StripeProductID = ""
 			service.PriceID = ""
 		}
@@ -54,7 +51,7 @@ func EnsureServiceHasPriceID(service *templates.Service) (bool, error) {
 	}
 
 	if service.StripeProductID == "" {
-		log.Printf("Creating new Stripe Product for service '%s' (was: '%s')...", service.Name, originalStripeProductID)
+		utils.Info("stripe", "Creating new Stripe Product for service", "service", service.Name, "original_product_id", originalStripeProductID)
 		productParams := &stripe.ProductParams{
 			Name:        stripe.String(service.Name),
 			Description: stripe.String(service.Description),
@@ -65,30 +62,28 @@ func EnsureServiceHasPriceID(service *templates.Service) (bool, error) {
 		}
 		service.StripeProductID = newProduct.ID
 		service.PriceID = "" // Ensure new price is created for this new product
-		log.Printf("Created new Stripe Product for '%s' with ID: %s", service.Name, service.StripeProductID)
+		utils.Info("stripe", "Created new Stripe Product", "service", service.Name, "product_id", service.StripeProductID)
 	}
 
 	// --- Validate or Create Stripe Price ID ---
 	if service.PriceID != "" {
 		if service.StripeProductID == "" { // Should have a product ID by now
 			service.PriceID = "" // Cannot validate price without product
-			log.Printf(
-				"Cleared PriceID for service '%s' because StripeProductID is missing before price validation.",
-				service.Name,
-			)
+			utils.Warn("stripe", "Cleared PriceID because StripeProductID is missing before price validation", "service", service.Name)
 		} else {
 			pr, err := price.Get(service.PriceID, nil)
 			if err != nil {
 				if stripeErr, ok := err.(*stripe.Error); ok && stripeErr.Code == stripe.ErrorCodeResourceMissing {
-					log.Printf("Stripe Price ID '%s' for service '%s' (Product: %s) not found. Will create a new one.", service.PriceID, service.Name, service.StripeProductID)
+					utils.Debug("stripe", "Stripe Price ID not found, will create new one", "price_id", service.PriceID, "service", service.Name, "product_id", service.StripeProductID)
 					service.PriceID = "" // Mark for creation
 				} else {
 					return false, fmt.Errorf("error validating Stripe Price ID '%s' for service '%s': %w", service.PriceID, service.Name, err)
 				}
 			} else if pr == nil || !pr.Active || pr.Product == nil || pr.Product.ID != service.StripeProductID {
 				// Price found but is nil, inactive, or doesn't belong to the service's StripeProduct
-				log.Printf("Stripe Price ID '%s' for service '%s' (Product: %s) is inactive, invalid, or mismatched (Price's Product: '%s'). Will create a new one.",
-					service.PriceID, service.Name, service.StripeProductID, SafeStrPtr(pr.Product, func(p *stripe.Product) string { return p.ID }))
+				priceProductID := SafeStrPtr(pr.Product, func(p *stripe.Product) string { return p.ID })
+				utils.Debug("stripe", "Stripe Price ID is inactive, invalid, or mismatched, will create new one",
+					"price_id", service.PriceID, "service", service.Name, "expected_product_id", service.StripeProductID, "actual_product_id", priceProductID)
 				service.PriceID = ""
 			}
 			// If price is valid, active, and matches product, keep service.PriceID
@@ -102,12 +97,7 @@ func EnsureServiceHasPriceID(service *templates.Service) (bool, error) {
 				service.Name,
 			)
 		}
-		log.Printf(
-			"Creating new Stripe Price for service '%s' (Product ID: %s, was PriceID: '%s')...",
-			service.Name,
-			service.StripeProductID,
-			originalPriceID,
-		)
+		utils.Info("stripe", "Creating new Stripe Price for service", "service", service.Name, "product_id", service.StripeProductID, "original_price_id", originalPriceID)
 		priceParams := &stripe.PriceParams{
 			Currency:   stripe.String(string(stripe.CurrencyUSD)),
 			UnitAmount: stripe.Int64(int64(service.Price * 100)),
@@ -117,10 +107,7 @@ func EnsureServiceHasPriceID(service *templates.Service) (bool, error) {
 		newPrice, err := price.New(priceParams)
 		if err != nil {
 			if errors.As(err, &sErr) && sErr.Code == stripe.ErrorCode("price_missing_product") {
-				log.Printf(
-					"Attempted to create price for non-existent product %s. This indicates an issue with product creation/validation logic.",
-					service.StripeProductID,
-				)
+				utils.Error("stripe", "Attempted to create price for non-existent product", "product_id", service.StripeProductID, "service", service.Name)
 			}
 			return false, fmt.Errorf(
 				"error creating new Stripe price for service '%s' (Product: %s): %w",
@@ -130,7 +117,7 @@ func EnsureServiceHasPriceID(service *templates.Service) (bool, error) {
 			)
 		}
 		service.PriceID = newPrice.ID
-		log.Printf("Created new Stripe Price for '%s' with ID: %s", service.Name, service.PriceID)
+		utils.Info("stripe", "Created new Stripe Price", "service", service.Name, "price_id", service.PriceID)
 	}
 
 	// Determine if any IDs were actually changed or assigned
@@ -163,16 +150,9 @@ type PaymentLinkStatus struct {
 
 // CreatePaymentLink creates a payment link for the current cart
 func CreatePaymentLink(totalAmount float64, email string) (*stripe.PaymentLink, error) {
-	log.Println("[CreatePaymentLink] Cart contents before creating link:")
+	utils.Debug("stripe", "Creating payment link - cart contents", "total_amount", totalAmount, "email", email)
 	for i, cartItem := range AppState.CurrentCart {
-		log.Printf(
-			"[CreatePaymentLink] Item %d: Name: %s, ID: %s, StripeProductID: '%s', PriceID: '%s'",
-			i,
-			cartItem.Name,
-			cartItem.ID,
-			cartItem.StripeProductID,
-			cartItem.PriceID,
-		)
+		utils.Debug("stripe", "Cart item", "index", i, "name", cartItem.Name, "id", cartItem.ID, "stripe_product_id", cartItem.StripeProductID, "price_id", cartItem.PriceID)
 	}
 
 	// Create payment link params
@@ -191,10 +171,7 @@ func CreatePaymentLink(totalAmount float64, email string) (*stripe.PaymentLink, 
 		// Create a temporary Price object for this service with tax included,
 		// linked to the actual Stripe Product.
 		if service.StripeProductID == "" {
-			log.Printf(
-				"Error: Service '%s' is missing StripeProductID. Cannot create payment link line item.",
-				service.Name,
-			)
+			utils.Error("stripe", "Service missing StripeProductID, cannot create payment link line item", "service", service.Name)
 			return nil, fmt.Errorf("service '%s' is missing StripeProductID", service.Name)
 		}
 
@@ -208,12 +185,7 @@ func CreatePaymentLink(totalAmount float64, email string) (*stripe.PaymentLink, 
 		}
 		tempPrice, err := price.New(priceParams)
 		if err != nil {
-			log.Printf(
-				"Error creating temporary Stripe price for %s (Product: %s): %v",
-				service.Name,
-				service.StripeProductID,
-				err,
-			)
+			utils.Error("stripe", "Error creating temporary Stripe price for payment link", "service", service.Name, "product_id", service.StripeProductID, "error", err)
 			return nil, fmt.Errorf("error creating temporary price for service %s: %w", service.Name, err)
 		}
 
@@ -275,7 +247,7 @@ func CheckPaymentLinkStatus(paymentLinkID string) (PaymentLinkStatus, error) {
 	}
 
 	if err := i.Err(); err != nil {
-		log.Printf("Error checking checkout sessions: %v", err)
+		utils.Error("stripe", "Error checking checkout sessions", "error", err)
 	}
 
 	// Return the status

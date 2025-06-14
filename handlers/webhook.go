@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -14,6 +13,7 @@ import (
 
 	"checkout/config"
 	"checkout/services"
+	"checkout/utils"
 )
 
 // WebhookPaymentState represents the cached state of a payment from webhooks
@@ -105,7 +105,7 @@ func setCachedPaymentState(id, paymentType string, state *WebhookPaymentState) {
 		webhookCache.ByReader[id] = state
 	}
 
-	log.Printf("[Cache] Stored %s state for ID: %s, Status: %s", paymentType, id, state.Status)
+	utils.Debug("webhook", "Cached payment state", "type", paymentType, "id", id, "status", state.Status)
 }
 
 // cleanupExpiredStates removes expired states from cache (called periodically)
@@ -120,7 +120,7 @@ func cleanupExpiredStates() {
 	for id, state := range webhookCache.ByPaymentIntent {
 		if now.Sub(state.LastUpdated) > expiry {
 			delete(webhookCache.ByPaymentIntent, id)
-			log.Printf("[Cache] Expired payment_intent state: %s", id)
+			utils.Debug("webhook", "Expired payment_intent state", "id", id)
 		}
 	}
 
@@ -128,7 +128,7 @@ func cleanupExpiredStates() {
 	for id, state := range webhookCache.ByPaymentLink {
 		if now.Sub(state.LastUpdated) > expiry {
 			delete(webhookCache.ByPaymentLink, id)
-			log.Printf("[Cache] Expired payment_link state: %s", id)
+			utils.Debug("webhook", "Expired payment_link state", "id", id)
 		}
 	}
 
@@ -136,7 +136,7 @@ func cleanupExpiredStates() {
 	for id, state := range webhookCache.ByReader {
 		if now.Sub(state.LastUpdated) > expiry {
 			delete(webhookCache.ByReader, id)
-			log.Printf("[Cache] Expired terminal state: %s", id)
+			utils.Debug("webhook", "Expired terminal state", "id", id)
 		}
 	}
 }
@@ -154,12 +154,11 @@ func init() {
 }
 
 // StripeWebhookHandler processes Stripe webhook events
-// StripeWebhookHandler processes Stripe webhook events
 func StripeWebhookHandler(w http.ResponseWriter, r *http.Request) {
 	// Read request body
 	payload, err := io.ReadAll(r.Body)
 	if err != nil {
-		log.Printf("Error reading webhook body: %v", err)
+		utils.Error("webhook", "Error reading webhook body", "error", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -169,7 +168,7 @@ func StripeWebhookHandler(w http.ResponseWriter, r *http.Request) {
 	webhookSecret := config.GetStripeWebhookSecret()
 
 	if webhookSecret == "" {
-		log.Printf("Warning: Stripe webhook secret not configured")
+		utils.Warn("webhook", "Stripe webhook secret not configured")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -177,12 +176,12 @@ func StripeWebhookHandler(w http.ResponseWriter, r *http.Request) {
 	// Verify signature
 	event, err := webhook.ConstructEvent(payload, sigHeader, webhookSecret)
 	if err != nil {
-		log.Printf("Webhook signature verification failed: %v", err)
+		utils.Error("webhook", "Signature verification failed", "error", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	log.Printf("[Webhook] Received event: %s", event.Type)
+	utils.Info("webhook", "Received event", "type", event.Type, "id", event.ID)
 
 	// Handle different event types
 	switch event.Type {
@@ -229,7 +228,7 @@ func StripeWebhookHandler(w http.ResponseWriter, r *http.Request) {
 		sendSSEUpdateFromWebhook(event)
 
 	default:
-		log.Printf("[Webhook] Unhandled event type: %s", event.Type)
+		utils.Error("webhook", "Unhandled event type", "type", event.Type)
 	}
 
 	// Return a success response to Stripe
@@ -241,7 +240,7 @@ func StripeWebhookHandler(w http.ResponseWriter, r *http.Request) {
 func handlePaymentIntentCreated(raw json.RawMessage) {
 	var intent stripe.PaymentIntent
 	if err := json.Unmarshal(raw, &intent); err != nil {
-		log.Printf("Error parsing payment_intent.created: %v", err)
+		utils.Error("webhook", "Error parsing payment_intent.created", "error", err)
 		return
 	}
 
@@ -255,13 +254,13 @@ func handlePaymentIntentCreated(raw json.RawMessage) {
 	}
 
 	setCachedPaymentState(intent.ID, "payment_intent", state)
-	log.Printf("[Webhook] Payment intent created: %s", intent.ID)
+	utils.Debug("webhook", "Payment intent created", "id", intent.ID, "amount", intent.Amount, "currency", intent.Currency)
 }
 
 func handlePaymentIntentSucceeded(raw json.RawMessage) {
 	var intent stripe.PaymentIntent
 	if err := json.Unmarshal(raw, &intent); err != nil {
-		log.Printf("Error parsing payment_intent.succeeded: %v", err)
+		utils.Error("webhook", "Error parsing payment_intent.succeeded", "error", err)
 		return
 	}
 
@@ -275,13 +274,13 @@ func handlePaymentIntentSucceeded(raw json.RawMessage) {
 	}
 
 	setCachedPaymentState(intent.ID, "payment_intent", state)
-	log.Printf("[Webhook] Payment intent succeeded: %s", intent.ID)
+	utils.Info("webhook", "Payment intent succeeded", "id", intent.ID, "amount", intent.Amount)
 }
 
 func handlePaymentIntentFailed(raw json.RawMessage) {
 	var intent stripe.PaymentIntent
 	if err := json.Unmarshal(raw, &intent); err != nil {
-		log.Printf("Error parsing payment_intent.payment_failed: %v", err)
+		utils.Error("webhook", "Error parsing payment_intent.payment_failed", "error", err)
 		return
 	}
 
@@ -301,13 +300,13 @@ func handlePaymentIntentFailed(raw json.RawMessage) {
 	}
 
 	setCachedPaymentState(intent.ID, "payment_intent", state)
-	log.Printf("[Webhook] Payment intent failed: %s, reason: %s", intent.ID, errorMessage)
+	utils.Error("webhook", "Payment intent failed", "id", intent.ID, "reason", errorMessage)
 }
 
 func handlePaymentIntentCanceled(raw json.RawMessage) {
 	var intent stripe.PaymentIntent
 	if err := json.Unmarshal(raw, &intent); err != nil {
-		log.Printf("Error parsing payment_intent.canceled: %v", err)
+		utils.Error("webhook", "Error parsing payment_intent.canceled", "error", err)
 		return
 	}
 
@@ -321,13 +320,13 @@ func handlePaymentIntentCanceled(raw json.RawMessage) {
 	}
 
 	setCachedPaymentState(intent.ID, "payment_intent", state)
-	log.Printf("[Webhook] Payment intent canceled: %s", intent.ID)
+	utils.Info("webhook", "Payment intent canceled", "id", intent.ID)
 }
 
 func handlePaymentIntentRequiresAction(raw json.RawMessage) {
 	var intent stripe.PaymentIntent
 	if err := json.Unmarshal(raw, &intent); err != nil {
-		log.Printf("Error parsing payment_intent.requires_action: %v", err)
+		utils.Error("webhook", "Error parsing payment_intent.requires_action", "error", err)
 		return
 	}
 
@@ -341,13 +340,13 @@ func handlePaymentIntentRequiresAction(raw json.RawMessage) {
 	}
 
 	setCachedPaymentState(intent.ID, "payment_intent", state)
-	log.Printf("[Webhook] Payment intent requires action: %s", intent.ID)
+	utils.Debug("webhook", "Payment intent requires action", "id", intent.ID)
 }
 
 func handlePaymentLinkCompleted(raw json.RawMessage) {
 	var paymentLink stripe.PaymentLink
 	if err := json.Unmarshal(raw, &paymentLink); err != nil {
-		log.Printf("Error parsing payment_link.completed: %v", err)
+		utils.Error("webhook", "Error parsing payment_link.completed", "error", err)
 		return
 	}
 
@@ -359,17 +358,16 @@ func handlePaymentLinkCompleted(raw json.RawMessage) {
 	}
 
 	setCachedPaymentState(paymentLink.ID, "payment_link", state)
-	log.Printf("[Webhook] Payment link completed: %s", paymentLink.ID)
+	utils.Info("webhook", "Payment link completed", "id", paymentLink.ID)
 }
 
 func handlePaymentLinkUpdated(raw json.RawMessage) {
 	var paymentLink stripe.PaymentLink
 	if err := json.Unmarshal(raw, &paymentLink); err != nil {
-		log.Printf("Error parsing payment_link.updated: %v", err)
+		utils.Error("webhook", "Error parsing payment_link.updated", "error", err)
 		return
 	}
 
-	// Only cache if status changed to something meaningful
 	// Only cache if status changed to something meaningful
 	if !paymentLink.Active {
 		state := &WebhookPaymentState{
@@ -380,7 +378,7 @@ func handlePaymentLinkUpdated(raw json.RawMessage) {
 		}
 
 		setCachedPaymentState(paymentLink.ID, "payment_link", state)
-		log.Printf("[Webhook] Payment link updated: %s", paymentLink.ID)
+		utils.Debug("webhook", "Payment link updated to inactive", "id", paymentLink.ID)
 	}
 }
 
@@ -388,7 +386,7 @@ func handleTerminalActionSucceeded(raw json.RawMessage) {
 	// Terminal events have a different structure, may need adjustment
 	var event map[string]interface{}
 	if err := json.Unmarshal(raw, &event); err != nil {
-		log.Printf("Error parsing terminal.reader.action_succeeded: %v", err)
+		utils.Error("webhook", "Error parsing terminal.reader.action_succeeded", "error", err)
 		return
 	}
 
@@ -403,7 +401,7 @@ func handleTerminalActionSucceeded(raw json.RawMessage) {
 			}
 
 			setCachedPaymentState(readerID, "terminal", state)
-			log.Printf("[Webhook] Terminal action succeeded: %s", readerID)
+			utils.Debug("webhook", "Terminal action succeeded", "reader_id", readerID)
 		}
 	}
 }
@@ -411,7 +409,7 @@ func handleTerminalActionSucceeded(raw json.RawMessage) {
 func handleTerminalActionFailed(raw json.RawMessage) {
 	var event map[string]interface{}
 	if err := json.Unmarshal(raw, &event); err != nil {
-		log.Printf("Error parsing terminal.reader.action_failed: %v", err)
+		utils.Error("webhook", "Error parsing terminal.reader.action_failed", "error", err)
 		return
 	}
 
@@ -425,7 +423,7 @@ func handleTerminalActionFailed(raw json.RawMessage) {
 			}
 
 			setCachedPaymentState(readerID, "terminal", state)
-			log.Printf("[Webhook] Terminal action failed: %s", readerID)
+			utils.Error("webhook", "Terminal action failed", "reader_id", readerID)
 		}
 	}
 }
@@ -433,7 +431,7 @@ func handleTerminalActionFailed(raw json.RawMessage) {
 func handleChargeSucceeded(raw json.RawMessage) {
 	var charge stripe.Charge
 	if err := json.Unmarshal(raw, &charge); err != nil {
-		log.Printf("Error parsing charge.succeeded: %v", err)
+		utils.Error("webhook", "Error parsing charge.succeeded", "error", err)
 		return
 	}
 
@@ -449,14 +447,14 @@ func handleChargeSucceeded(raw json.RawMessage) {
 		}
 
 		setCachedPaymentState(charge.PaymentIntent.ID, "payment_intent", state)
-		log.Printf("[Webhook] Charge succeeded for payment intent: %s", charge.PaymentIntent.ID)
+		utils.Info("webhook", "Charge succeeded", "payment_intent_id", charge.PaymentIntent.ID, "amount", charge.Amount)
 	}
 }
 
 func handleChargeFailed(raw json.RawMessage) {
 	var charge stripe.Charge
 	if err := json.Unmarshal(raw, &charge); err != nil {
-		log.Printf("Error parsing charge.failed: %v", err)
+		utils.Error("webhook", "Error parsing charge.failed", "error", err)
 		return
 	}
 
@@ -477,7 +475,7 @@ func handleChargeFailed(raw json.RawMessage) {
 		}
 
 		setCachedPaymentState(charge.PaymentIntent.ID, "payment_intent", state)
-		log.Printf("[Webhook] Charge failed for payment intent: %s, reason: %s", charge.PaymentIntent.ID, errorMessage)
+		utils.Error("webhook", "Charge failed", "payment_intent_id", charge.PaymentIntent.ID, "reason", errorMessage)
 	}
 }
 
@@ -493,7 +491,8 @@ func sendSSEUpdateFromWebhook(event stripe.Event) {
 			sendQRSSEUpdate(paymentLinkID, "completed")
 		}
 	case "terminal.reader.action_succeeded", "terminal.reader.action_failed":
-		if actionData := extractTerminalActionFromEvent(event); actionData != nil {
+		actionData := extractTerminalActionFromEvent(event)
+		if rawData, ok := actionData.(json.RawMessage); ok && len(rawData) > 0 {
 			sendTerminalActionSSEUpdate(actionData)
 		}
 	case "charge.succeeded", "charge.failed":
@@ -519,7 +518,7 @@ func sendTerminalSSEUpdate(intentID string, intent *stripe.PaymentIntent) {
 	}
 
 	var result PaymentStatusResult
-	
+
 	switch intent.Status {
 	case stripe.PaymentIntentStatusSucceeded:
 		result = handleTerminalPaymentSuccess(intentID, terminalState, intent)
@@ -537,7 +536,6 @@ func sendTerminalSSEUpdate(intentID string, intent *stripe.PaymentIntent) {
 			PaymentStatus: string(intent.Status),
 		}
 		result = PaymentStatusResult{
-			Status:     "pending",
 			Component:  createPaymentProgressComponentWithOptions(options),
 			ShouldStop: false,
 		}
@@ -546,7 +544,7 @@ func sendTerminalSSEUpdate(intentID string, intent *stripe.PaymentIntent) {
 	if result.Component != nil {
 		GlobalSSEBroadcaster.BroadcastPaymentUpdate(intentID, result.Component)
 	}
-	
+
 	if result.ShouldStop {
 		GlobalSSEBroadcaster.RemoveConnection(intentID)
 	}
@@ -560,7 +558,7 @@ func sendQRSSEUpdate(paymentLinkID, status string) {
 	}
 
 	var result PaymentStatusResult
-	
+
 	switch status {
 	case "completed":
 		// Create a simple payment link status to pass to the handler
@@ -568,20 +566,19 @@ func sendQRSSEUpdate(paymentLinkID, status string) {
 			Completed:     true,
 			CustomerEmail: "", // Will be extracted from cached state if available
 		}
-		
+
 		// Try to get customer email from cached state
 		if cachedState, found := GetCachedPaymentState(paymentLinkID, "payment_link"); found {
 			if email, exists := cachedState.Metadata["customer_email"]; exists {
 				paymentLinkStatus.CustomerEmail = email
 			}
 		}
-		
+
 		result = handleQRPaymentSuccess(paymentLinkID, paymentLinkStatus)
 	default:
 		// Continue with progress update
 		progress := calculateProgressInfo(state.GetStartTime(), config.PaymentTimeout)
 		result = PaymentStatusResult{
-			Status:     "pending",
 			Component:  createPaymentProgressComponent(paymentLinkID, progress, "qr"),
 			ShouldStop: false,
 		}
@@ -590,7 +587,7 @@ func sendQRSSEUpdate(paymentLinkID, status string) {
 	if result.Component != nil {
 		GlobalSSEBroadcaster.BroadcastPaymentUpdate(paymentLinkID, result.Component)
 	}
-	
+
 	if result.ShouldStop {
 		GlobalSSEBroadcaster.RemoveConnection(paymentLinkID)
 	}
@@ -600,14 +597,14 @@ func sendQRSSEUpdate(paymentLinkID, status string) {
 func sendTerminalActionSSEUpdate(actionData interface{}) {
 	// This would handle terminal reader action events
 	// Implementation depends on the specific action data structure
-	log.Printf("[SSE] Terminal action update: %+v", actionData)
+	utils.Debug("sse", "Terminal action update", "action_data", actionData)
 }
 
 // Helper functions to extract data from webhook events
 func extractPaymentIntentFromEvent(event stripe.Event) *stripe.PaymentIntent {
 	var paymentIntent stripe.PaymentIntent
 	if err := json.Unmarshal(event.Data.Raw, &paymentIntent); err != nil {
-		log.Printf("Error parsing payment intent from webhook: %v", err)
+		utils.Error("webhook", "Error parsing payment intent from webhook", "error", err)
 		return nil
 	}
 	return &paymentIntent
@@ -616,7 +613,7 @@ func extractPaymentIntentFromEvent(event stripe.Event) *stripe.PaymentIntent {
 func extractPaymentLinkIDFromEvent(event stripe.Event) string {
 	var paymentLink stripe.PaymentLink
 	if err := json.Unmarshal(event.Data.Raw, &paymentLink); err != nil {
-		log.Printf("Error parsing payment link from webhook: %v", err)
+		utils.Error("webhook", "Error parsing payment link from webhook", "error", err)
 		return ""
 	}
 	return paymentLink.ID
@@ -625,7 +622,7 @@ func extractPaymentLinkIDFromEvent(event stripe.Event) string {
 func extractChargeFromEvent(event stripe.Event) *stripe.Charge {
 	var charge stripe.Charge
 	if err := json.Unmarshal(event.Data.Raw, &charge); err != nil {
-		log.Printf("Error parsing charge from webhook: %v", err)
+		utils.Error("webhook", "Error parsing charge from webhook", "error", err)
 		return nil
 	}
 	return &charge

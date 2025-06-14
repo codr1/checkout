@@ -6,7 +6,9 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"flag"
 	"log"
+	"log/slog"
 	"math/big"
 	"net"
 	"net/http"
@@ -14,13 +16,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/stripe/stripe-go/v74"
-	"github.com/stripe/stripe-go/v74/balance"
-	"github.com/stripe/stripe-go/v74/webhookendpoint"
-
 	"checkout/config"
 	"checkout/handlers"
 	"checkout/services"
+	"checkout/utils"
+
+	"github.com/stripe/stripe-go/v74"
+	"github.com/stripe/stripe-go/v74/balance"
+	"github.com/stripe/stripe-go/v74/webhookendpoint"
 )
 
 // Configuration
@@ -54,45 +57,42 @@ func init() {
 		transactionsDir = TRANSACTIONS_DIR
 	}
 
-	os.MkdirAll(dataDir, 0755)
-	os.MkdirAll(transactionsDir, 0755)
+	// Create data directories
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		log.Fatalf("Failed to create data directory: %v", err)
+	}
+	if err := os.MkdirAll(transactionsDir, 0755); err != nil {
+		log.Fatalf("Failed to create transactions directory: %v", err)
+	}
 
 	// Initialize Stripe with API key from config or environment variable
 	stripe.Key = config.GetStripeKey()
 	if stripe.Key == "" {
-		log.Fatal(
-			"Missing Stripe Secret Key in config or environment. Please set STRIPE_SECRET_KEY environment variable or configure it in the config file.",
-		)
+		log.Fatal("Missing Stripe Secret Key in config or environment. Please set STRIPE_SECRET_KEY environment variable or configure it in the config file.")
 	}
 
-	// Load services from JSON
+	// Test the Stripe key by making a simple API call
+	_, err := balance.Get(&stripe.BalanceParams{})
+	if err != nil {
+		log.Fatalf("Invalid Stripe Secret Key - API test failed: %v", err)
+	}
+	utils.Info("startup", "Stripe API key validated successfully")
+
+	// Load services
 	if err := services.LoadServices(); err != nil {
-		log.Printf("Error loading services: %v", err)
-		// Depending on severity, you might want to log.Fatal(err) here
+		utils.Error("startup", "Error loading services", "error", err)
+		return
 	}
 
 	// Load Stripe Terminal Locations and select one
 	services.LoadStripeLocationsAndSelect()
 
-	// If a location is selected, load its readers
+	// If a location was selected, load readers for that location
 	if services.AppState.SelectedStripeLocation.ID != "" {
 		services.LoadStripeReadersForLocation(services.AppState.SelectedStripeLocation.ID)
-	} else {
-		log.Println("[MainInit] No Stripe Terminal Location selected. Terminal reader-specific functionalities might be limited.")
 	}
 
-	// Test the Stripe API key by making a simple API call
-	_, err := balance.Get(nil)
-	if err != nil {
-		log.Fatalf(
-			"Stripe API key is invalid or not working: %v\nPlease ensure your Stripe Secret Key is correct in the environment variable or config file.",
-			err,
-		)
-	}
-
-	log.Println("Stripe API initialized successfully")
-
-	// Set up communication strategy (polling vs webhooks)
+	// Set up webhook endpoint registration
 	registerWebhookEndpoint()
 }
 
@@ -160,14 +160,14 @@ func getCommunicationStrategy() string {
 func registerWebhookEndpoint() {
 	strategy := getCommunicationStrategy()
 	if strategy != "webhooks" {
-		log.Printf("[Communication] Using polling strategy (localhost/no domain)")
+		utils.Info("communication", "Using polling strategy", "reason", "localhost/no domain")
 		return
 	}
 
 	// Check if webhook secret is configured
 	webhookSecret := config.GetStripeWebhookSecret()
 	if webhookSecret == "" {
-		log.Printf("[Warning] Webhook strategy selected but no webhook secret configured")
+		utils.Warn("communication", "Webhook strategy selected but no webhook secret configured")
 		return
 	}
 
@@ -198,18 +198,28 @@ func registerWebhookEndpoint() {
 
 	result, err := webhookendpoint.New(params)
 	if err != nil {
-		log.Printf("[Error] Failed to register webhook endpoint: %v", err)
-		log.Printf("[Info] Falling back to polling mode")
+		utils.Error("communication", "Failed to register webhook endpoint", "error", err)
+		utils.Info("communication", "Falling back to polling mode")
 		return
 	}
 
-	log.Printf("[Communication] Using webhook strategy")
-	log.Printf("[Webhook] Registered endpoint: %s", webhookURL)
-	log.Printf("[Webhook] Endpoint ID: %s", result.ID)
-	log.Printf("[Webhook] Events: %v", enabledEvents)
+	utils.Info("communication", "Using webhook strategy")
+	utils.Debug("webhook", "Registered endpoint", "url", webhookURL, "id", result.ID, "events", enabledEvents)
 }
 
 func main() {
+	// Parse command line flags
+	debugFlag := flag.Bool("debug", false, "Enable debug logging")
+	flag.Parse()
+
+	// Configure slog based on debug flag
+	if *debugFlag {
+		slog.SetLogLoggerLevel(slog.LevelDebug)
+		slog.Info("Debug logging enabled")
+	} else {
+		slog.SetLogLoggerLevel(slog.LevelInfo)
+	}
+
 	rootMux := http.NewServeMux()
 
 	// Static files: Publicly accessible
@@ -224,10 +234,8 @@ func main() {
 	// Stripe webhook handler: Public, but typically has its own signature verification, not session auth
 	rootMux.HandleFunc("/stripe-webhook", handlers.StripeWebhookHandler)
 
-
 	// Payment events endpoint - SSE for real-time payment updates
 	rootMux.HandleFunc("/payment-events", handlers.PaymentSSEHandler)
-
 
 	// Application-specific routes that require authentication will go into appMux
 	appMux := http.NewServeMux()
@@ -242,16 +250,17 @@ func main() {
 	appMux.HandleFunc("/process-payment", handlers.ProcessPaymentHandler)
 	appMux.HandleFunc("/generate-qr-code", handlers.GenerateQRCodeHandler)
 	appMux.HandleFunc("/manual-card-form", handlers.ManualCardFormHandler)
-	appMux.HandleFunc("/check-paymentlink-status", handlers.CheckPaymentlinkStatusHandler)
-	appMux.HandleFunc("/cancel-payment-link", handlers.CancelPaymentLinkHandler)
-	appMux.HandleFunc("/expire-payment-link", handlers.ExpirePaymentLinkHandler)
+	appMux.HandleFunc("/get-payment-status", handlers.GetPaymentStatusHandler)
+	appMux.HandleFunc("/cancel-or-refresh-payment", handlers.CancelOrRefreshPaymentHandler)
 	appMux.HandleFunc("/cancel-transaction", handlers.CancelTransactionHandler)
 	appMux.HandleFunc("/update-receipt-info", handlers.ReceiptInfoHandler)
 
-	// Terminal Payment Polling Endpoints
-	appMux.HandleFunc("/check-terminal-payment-status", handlers.CheckTerminalPaymentStatusHandler)
-	appMux.HandleFunc("/cancel-terminal-payment", handlers.CancelTerminalPaymentHandler)
-	appMux.HandleFunc("/expire-terminal-payment", handlers.ExpireTerminalPaymentHandler)
+	// Settings routes
+	appMux.HandleFunc("/settings", handlers.SettingsHandler)
+	appMux.HandleFunc("/api/settings/search", handlers.SettingsSearchHandler)
+	appMux.HandleFunc("/api/settings/update", handlers.SettingsUpdateHandler)
+
+	// Terminal Payment Endpoints
 	appMux.HandleFunc("/clear-terminal-transaction", handlers.ClearTerminalTransactionHandler)
 
 	// POS Page specific handlers
@@ -283,13 +292,9 @@ func main() {
 
 	// Determine protocol and start appropriate server
 	if shouldUseHTTPS() {
-		log.Printf(
-			"No domain configured (websiteName: '%s') - starting HTTPS server on port %s for local testing...",
-			config.Config.WebsiteName,
-			port,
-		)
-		log.Printf("⚠️  You will need to accept the security warning in your browser for the self-signed certificate")
-		log.Printf("🔗 Access your application at: https://localhost:%s", port)
+		utils.Info("server", "Starting HTTPS server for local testing", "port", port, "website", config.Config.WebsiteName)
+		utils.Info("server", "⚠️  You will need to accept the security warning in your browser for the self-signed certificate")
+		utils.Info("server", "🔗 Access your application", "url", "https://localhost:"+port)
 
 		// Generate self-signed certificate
 		cert, err := generateSelfSignedCert()
@@ -308,9 +313,9 @@ func main() {
 
 		log.Fatal(server.ListenAndServeTLS("", ""))
 	} else {
-		log.Printf("Domain configured (websiteName: '%s') - starting HTTP server on port %s for cloudflared...", config.Config.WebsiteName, port)
-		log.Printf("🔗 Expected to be accessed via cloudflared tunnel or reverse proxy")
-		log.Printf("🔗 Local HTTP access: http://localhost:%s", port)
+		utils.Info("server", "Starting HTTP server for cloudflared", "port", port, "website", config.Config.WebsiteName)
+		utils.Info("server", "🔗 Expected to be accessed via cloudflared tunnel or reverse proxy")
+		utils.Info("server", "🔗 Local HTTP access", "url", "http://localhost:"+port)
 
 		log.Fatal(http.ListenAndServe(":"+port, rootMux))
 	}

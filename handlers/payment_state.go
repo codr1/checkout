@@ -1,13 +1,13 @@
 package handlers
 
 import (
-	"log"
 	"sync"
 	"time"
 
 	"checkout/config"
 	"checkout/services"
 	"checkout/templates"
+	"checkout/utils"
 )
 
 // PaymentState interface for all payment state types
@@ -19,7 +19,7 @@ type PaymentState interface {
 	GetMetadata() map[string]interface{}
 }
 
-// PaymentStateManager manages all payment states in a unified way
+// PaymentStateManager manages all payment states
 type PaymentStateManager struct {
 	states map[string]PaymentState
 	mutex  sync.RWMutex
@@ -58,9 +58,8 @@ func (psm *PaymentStateManager) RemovePayment(id string) {
 func (psm *PaymentStateManager) CleanupExpired() {
 	psm.mutex.Lock()
 	defer psm.mutex.Unlock()
-	
 	for id, state := range psm.states {
-		// Use unified timeout for all payment types
+		// Use consistent timeout for all payment types
 		if state.IsExpired(config.PaymentTimeout) {
 			delete(psm.states, id)
 		}
@@ -78,10 +77,9 @@ func (psm *PaymentStateManager) GetActiveCount() int {
 func (psm *PaymentStateManager) GetActiveCountByType() (int, int) {
 	psm.mutex.RLock()
 	defer psm.mutex.RUnlock()
-	
 	terminalCount := 0
 	qrCount := 0
-	
+
 	for _, state := range psm.states {
 		switch state.GetPaymentType() {
 		case "terminal":
@@ -90,7 +88,6 @@ func (psm *PaymentStateManager) GetActiveCountByType() (int, int) {
 			qrCount++
 		}
 	}
-	
 	return terminalCount, qrCount
 }
 
@@ -98,7 +95,7 @@ func (psm *PaymentStateManager) GetActiveCountByType() (int, int) {
 func (psm *PaymentStateManager) GetStatesByType(paymentType string) []PaymentState {
 	psm.mutex.RLock()
 	defer psm.mutex.RUnlock()
-	
+
 	var states []PaymentState
 	for _, state := range psm.states {
 		if state.GetPaymentType() == paymentType {
@@ -120,14 +117,14 @@ func (psm *PaymentStateManager) ClearAll() {
 func (psm *PaymentStateManager) RemovePaymentAndClearCart(id string) {
 	psm.mutex.Lock()
 	defer psm.mutex.Unlock()
-	
+
 	// Remove the payment state
 	delete(psm.states, id)
-	
+
 	// Clear the cart since the transaction is complete/cancelled
 	services.AppState.CurrentCart = []templates.Service{}
-	
-	log.Printf("Removed payment state and cleared cart for payment: %s", id)
+
+	utils.Debug("payment", "Removed payment state and cleared cart", "payment_id", id)
 }
 
 // ClearAllAndClearCart removes all payment states and clears the cart in one operation
@@ -135,14 +132,14 @@ func (psm *PaymentStateManager) RemovePaymentAndClearCart(id string) {
 func (psm *PaymentStateManager) ClearAllAndClearCart() {
 	psm.mutex.Lock()
 	defer psm.mutex.Unlock()
-	
+
 	// Clear all payment states
 	psm.states = make(map[string]PaymentState)
-	
+
 	// Clear the cart since all transactions are being reset
 	services.AppState.CurrentCart = []templates.Service{}
-	
-	log.Printf("Cleared all payment states and cart")
+
+	utils.Info("payment", "Cleared all payment states and cart")
 }
 
 // ClearByTypeAndClearCart removes all payment states of a specific type and clears the cart
@@ -150,7 +147,7 @@ func (psm *PaymentStateManager) ClearAllAndClearCart() {
 func (psm *PaymentStateManager) ClearByTypeAndClearCart(paymentType string) {
 	psm.mutex.Lock()
 	defer psm.mutex.Unlock()
-	
+
 	removedCount := 0
 	for id, state := range psm.states {
 		if state.GetPaymentType() == paymentType {
@@ -158,11 +155,10 @@ func (psm *PaymentStateManager) ClearByTypeAndClearCart(paymentType string) {
 			removedCount++
 		}
 	}
-	
 	// Clear the cart if any payments were removed
 	if removedCount > 0 {
 		services.AppState.CurrentCart = []templates.Service{}
-		log.Printf("Removed %d %s payment states and cleared cart", removedCount, paymentType)
+		utils.Info("payment", "Removed payment states by type and cleared cart", "payment_type", paymentType, "removed_count", removedCount)
 	}
 }
 
@@ -242,7 +238,6 @@ func (t *TerminalPaymentState) GetMetadata() map[string]interface{} {
 	}
 }
 
-
 // PaymentEventType represents different types of payment events
 type PaymentEventType string
 
@@ -259,10 +254,10 @@ type PaymentEventLogger struct{}
 // LogPaymentEvent logs a payment event with standardized transaction creation
 func (pel *PaymentEventLogger) LogPaymentEvent(paymentID string, eventType PaymentEventType, paymentMethod string, cart []templates.Service, summary templates.CartSummary, email string) error {
 	now := time.Now()
-	
+
 	// Create standardized payment type string
 	paymentTypeStr := pel.getPaymentTypeString(paymentMethod, eventType)
-	
+
 	transaction := templates.Transaction{
 		ID:            paymentID,
 		Date:          now.Format("01/02/2006"),
@@ -277,11 +272,11 @@ func (pel *PaymentEventLogger) LogPaymentEvent(paymentID string, eventType Payme
 
 	// Save transaction with error logging
 	if err := services.SaveTransactionToCSV(transaction); err != nil {
-		log.Printf("Error saving %s transaction for payment %s: %v", paymentTypeStr, paymentID, err)
+		utils.Error("payment", "Error saving transaction", "payment_type", paymentTypeStr, "payment_id", paymentID, "error", err)
 		return err
 	}
 
-	log.Printf("Successfully logged %s transaction for payment %s", paymentTypeStr, paymentID)
+	utils.Info("payment", "Successfully logged transaction", "payment_type", paymentTypeStr, "payment_id", paymentID, "amount", summary.Total)
 	return nil
 }
 
@@ -290,7 +285,7 @@ func (pel *PaymentEventLogger) LogPaymentEventFromState(state PaymentState, even
 	var cart []templates.Service
 	var summary templates.CartSummary
 	var paymentMethod string
-	
+
 	switch s := state.(type) {
 	case *TerminalPaymentState:
 		cart = s.Cart
@@ -305,21 +300,17 @@ func (pel *PaymentEventLogger) LogPaymentEventFromState(state PaymentState, even
 		paymentMethod = "qr"
 		// Calculate summary if not provided
 		if summary.Total == 0 {
-			if calcSummary, err := services.CalculateCartSummary(); err == nil {
-				summary = calcSummary
-			}
+			summary = services.CalculateCartSummary()
 		}
 	default:
 		// Fallback to current cart state
 		cart = services.AppState.CurrentCart
 		paymentMethod = "unknown"
 		if summary.Total == 0 {
-			if calcSummary, err := services.CalculateCartSummary(); err == nil {
-				summary = calcSummary
-			}
+			summary = services.CalculateCartSummary()
 		}
 	}
-	
+
 	return pel.LogPaymentEvent(state.GetID(), eventType, paymentMethod, cart, summary, email)
 }
 
@@ -347,4 +338,3 @@ func (pel *PaymentEventLogger) getPaymentTypeString(paymentMethod string, eventT
 // Global instances
 var GlobalPaymentStateManager = NewPaymentStateManager()
 var GlobalPaymentEventLogger = &PaymentEventLogger{}
-

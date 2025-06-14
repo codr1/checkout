@@ -4,13 +4,13 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"time"
 
 	"checkout/config"
 	"checkout/templates"
+	"checkout/utils"
 )
 
 // Save transaction to CSV in QuickBooks-friendly format
@@ -35,9 +35,13 @@ func SaveTransactionToCSV(transaction templates.Transaction) error {
 	// Open file for appending
 	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to open log file: %v", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			utils.Error("services", "Error closing transaction log file", "error", err)
+		}
+	}()
 
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
@@ -127,6 +131,8 @@ func SaveTransactionToCSV(transaction templates.Transaction) error {
 
 // LoadServices loads services from the JSON file
 func LoadServices() error {
+	utils.Info("services", "Loading services")
+
 	// Use data directory from config or fallback to constant
 	dataDir := config.Config.DataDir
 	if dataDir == "" {
@@ -134,26 +140,11 @@ func LoadServices() error {
 	}
 	servicesFilePath := filepath.Join(dataDir, "services.json")
 
-	// Create default services if file doesn't exist
+	// Check if services file exists
 	if _, err := os.Stat(servicesFilePath); os.IsNotExist(err) {
-		defaultServices := []templates.Service{
-			{ID: "1", Name: "Service 1", Description: "Basic service", Price: 50.00},
-			{ID: "2", Name: "Service 2", Description: "Premium service", Price: 100.00},
-			{ID: "3", Name: "Service 3", Description: "Deluxe service", Price: 150.00},
-		}
-
-		// Ensure each service has a Stripe priceID
-		for i := range defaultServices {
-			EnsureServiceHasPriceID(&defaultServices[i])
-		}
-
-		// Save the default services to file
-		if err := SaveServices(defaultServices); err != nil {
-			return err
-		}
-
-		AppState.Services = defaultServices
-		return nil
+		utils.Error("services", "No services defined", "error", "services.json file not found")
+		AppState.Services = []templates.Service{} // Initialize empty services
+		return fmt.Errorf("no services defined: services.json file not found")
 	}
 
 	// Read existing services
@@ -175,12 +166,7 @@ func LoadServices() error {
 		// which now returns (bool, error)
 		updated, err := EnsureServiceHasPriceID(&services[i])
 		if err != nil {
-			log.Printf(
-				"[LoadServices] Error ensuring Stripe IDs for service %s (ID: %s): %v",
-				services[i].Name,
-				services[i].ID,
-				err,
-			)
+			utils.Error("services", "Error ensuring Stripe IDs", "service", services[i].Name, "id", services[i].ID, "error", err)
 		}
 		if updated {
 			actualUpdatesMade = true
@@ -188,45 +174,25 @@ func LoadServices() error {
 	}
 
 	if actualUpdatesMade {
-		log.Println(
-			"[LoadServices] One or more services were updated with Stripe Product/Price IDs. Saving changes to services.json...",
-		)
+		utils.Debug("services", "Services updated with Stripe IDs, saving changes")
 		for _, s := range services { // Log current state of all services before saving
-			log.Printf(
-				"[LoadServices] Before SaveServices - Service: %s, ID: %s, StripeProductID: '%s', PriceID: '%s'",
-				s.Name,
-				s.ID,
-				s.StripeProductID,
-				s.PriceID,
-			)
+			utils.Debug("services", "Before SaveServices", "service", s.Name, "id", s.ID, "stripe_product_id", s.StripeProductID, "price_id", s.PriceID)
 		}
 		if err := SaveServices(services); err != nil {
 			return fmt.Errorf("error saving updated services to services.json: %w", err)
 		}
-		log.Println("[LoadServices] Successfully saved services.json with updated Stripe IDs.")
+		utils.Debug("services", "Successfully saved services.json with updated Stripe IDs")
 	}
 
 	// Log the state of services before assigning to AppState
 	for _, s := range services {
-		log.Printf(
-			"[LoadServices] Before AppState assignment - Service: %s, ID: %s, StripeProductID: '%s', PriceID: '%s'",
-			s.Name,
-			s.ID,
-			s.StripeProductID,
-			s.PriceID,
-		)
+		utils.Debug("services", "Before AppState assignment", "service", s.Name, "id", s.ID, "stripe_product_id", s.StripeProductID, "price_id", s.PriceID)
 	}
 	AppState.Services = services
-	log.Println("[LoadServices] Finished LoadServices. AppState.Services populated.")
+	utils.Debug("services", "Finished LoadServices, AppState.Services populated")
 	// Log the state of AppState.Services after assignment
 	for _, s_app := range AppState.Services {
-		log.Printf(
-			"[LoadServices] After AppState assignment (from AppState.Services) - Service: %s, ID: %s, StripeProductID: '%s', PriceID: '%s'",
-			s_app.Name,
-			s_app.ID,
-			s_app.StripeProductID,
-			s_app.PriceID,
-		)
+		utils.Debug("services", "After AppState assignment", "service", s_app.Name, "id", s_app.ID, "stripe_product_id", s_app.StripeProductID, "price_id", s_app.PriceID)
 	}
 	return nil
 }

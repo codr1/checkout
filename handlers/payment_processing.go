@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 
@@ -13,6 +12,7 @@ import (
 	"checkout/services"
 	"checkout/templates"
 	"checkout/templates/checkout"
+	"checkout/utils"
 )
 
 // Modal Helper Functions - Generic modal rendering utilities
@@ -31,7 +31,7 @@ func renderModal(
 	w.Header().Set("HX-Reswap", "innerHTML")        // Replace content inside the div
 
 	// Handle different trigger patterns - simple vs complex triggers
-	trigger := `showModal`
+	var trigger string
 	if len(additionalTriggers) > 0 {
 		// Complex trigger: {"showModal": true, "cartUpdated": true, ...}
 		triggers := append([]string{`"showModal": true`}, additionalTriggers...)
@@ -49,14 +49,14 @@ func renderModal(
 // renderErrorModal - Specialized helper for error cases
 // Replaces the common pattern of showing PaymentDeclinedModal with error messages
 func renderErrorModal(w http.ResponseWriter, r *http.Request, message, id string) error {
-	log.Printf("Rendering error modal: %s (ID: %s)", message, id)
+	utils.Debug("payment", "Rendering error modal", "message", message, "id", id)
 	return renderModal(w, r, checkout.PaymentDeclinedModal(message, id))
 }
 
 // renderSuccessModal - Specialized helper for success cases
 // Replaces the common pattern of showing success modals with cart updates
 func renderSuccessModal(w http.ResponseWriter, r *http.Request, paymentID string, hasEmail bool) error {
-	log.Printf("Rendering success modal for payment: %s", paymentID)
+	utils.Info("payment", "Rendering success modal", "payment_id", paymentID, "has_email", hasEmail)
 	return renderModal(w, r, checkout.PaymentSuccess(paymentID, hasEmail), `"cartUpdated": true`)
 }
 
@@ -83,16 +83,7 @@ func ProcessPaymentHandler(w http.ResponseWriter, r *http.Request) {
 	paymentMethod := r.FormValue("payment_method")
 
 	// Calculate cart summary with taxes
-	summary, err := services.CalculateCartSummary()
-	if err != nil {
-		log.Printf("Error calculating cart summary: %v", err)
-
-		// Send sanitized error message and set response headers in one line
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("HX-Trigger", fmt.Sprintf(`{"showToast": %q}`, "Error calculating taxes. Please try again."))
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
+	summary := services.CalculateCartSummary()
 
 	// Create a payment intent with appropriate payment method
 	params := &stripe.PaymentIntentParams{
@@ -130,7 +121,7 @@ func ProcessPaymentHandler(w http.ResponseWriter, r *http.Request) {
 
 	intent, err := paymentintent.New(params)
 	if err != nil {
-		log.Printf("Error creating payment intent: %v", err)
+		utils.Error("payment", "Error creating payment intent", "payment_method", paymentMethod, "amount", summary.Total, "error", err)
 		w.Header().Set("HX-Trigger", `{"showToast": "Error processing payment"}`)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -159,7 +150,7 @@ func ProcessPaymentHandler(w http.ResponseWriter, r *http.Request) {
 		// Manual card processing - this would typically involve a form for card details
 		// For now, we'll redirect to the manual card form
 		if renderErr := renderInfoModal(w, r, checkout.ManualCardForm(intent.ID)); renderErr != nil {
-			log.Printf("Error rendering manual card form: %v", renderErr)
+			utils.Error("payment", "Error rendering manual card form", "intent_id", intent.ID, "error", renderErr)
 		}
 		return
 
@@ -182,8 +173,8 @@ func ProcessPaymentHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Handle successful payment (terminal immediate success)
 	if paymentSuccess {
-		// Save transaction using the unified event logger
-		GlobalPaymentEventLogger.LogPaymentEvent(
+		// Log the successful transaction
+		_ = GlobalPaymentEventLogger.LogPaymentEvent(
 			intent.ID,
 			PaymentEventSuccess,
 			paymentMethod,
@@ -197,7 +188,7 @@ func ProcessPaymentHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Show success modal
 		if renderErr := renderSuccessModal(w, r, intent.ID, email != ""); renderErr != nil {
-			log.Printf("Error rendering payment success modal: %v", renderErr)
+			utils.Error("payment", "Error rendering payment success modal", "intent_id", intent.ID, "error", renderErr)
 		}
 	}
 }
@@ -214,20 +205,11 @@ func ReceiptInfoHandler(w http.ResponseWriter, r *http.Request) {
 	phone := r.FormValue("receipt_phone")
 
 	// Debug: Log what we received to understand the current form structure
-	log.Printf("ReceiptInfoHandler - Method: %s", r.Method)
-	log.Printf("ReceiptInfoHandler - Headers: %v", r.Header)
-	log.Printf(
-		"ReceiptInfoHandler - Form Values: confirmation_code=%s, receipt_email=%s, receipt_phone=%s",
-		confirmationCode,
-		email,
-		phone,
-	)
+	utils.Debug("receipt", "ReceiptInfoHandler called", "method", r.Method, "confirmation_code", confirmationCode, "email", email, "phone", phone)
 
 	// Validate that at least one contact method is provided
 	if email == "" && phone == "" {
-		if err := renderReceiptError(w, "Please provide either an email address or phone number."); err != nil {
-			log.Printf("Error rendering receipt error: %v", err)
-		}
+		renderReceiptError(w, "Please provide either an email address or phone number.")
 		return
 	}
 
@@ -251,24 +233,20 @@ func ReceiptInfoHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Handle the result
 	if sendError != nil {
-		log.Printf("Error sending receipt: %v", sendError)
-		if err := renderReceiptError(w, "Failed to send receipt. Please check your contact information and try again."); err != nil {
-			log.Printf("Error rendering receipt error: %v", err)
-		}
+		utils.Error("receipt", "Error sending receipt", "confirmation_code", confirmationCode, "method", sentMethod, "error", sendError)
+		renderReceiptError(w, "Failed to send receipt. Please check your contact information and try again.")
 		return
 	}
 
 	// Success - render success component
-	log.Printf("Receipt sent successfully via %s for transaction %s", sentMethod, confirmationCode)
-	if err := renderReceiptSuccess(w, sentMethod); err != nil {
-		log.Printf("Error rendering receipt success: %v", err)
-	}
+	utils.Info("receipt", "Receipt sent successfully", "confirmation_code", confirmationCode, "method", sentMethod)
+	renderReceiptSuccess(w, sentMethod)
 }
 
 // sendEmailReceipt simulates sending an email receipt
 func sendEmailReceipt(confirmationCode, email string) error {
 	// TODO: Replace with actual email service (SendGrid, AWS SES, etc.)
-	log.Printf("Sending email receipt for transaction %s to %s", confirmationCode, email)
+	utils.Debug("receipt", "Sending email receipt", "confirmation_code", confirmationCode, "email", email)
 
 	// Simulate potential failure for testing (remove this in production)
 	// Fail if email contains "fail" for demonstration purposes
@@ -283,7 +261,7 @@ func sendEmailReceipt(confirmationCode, email string) error {
 // sendSMSReceipt simulates sending an SMS receipt
 func sendSMSReceipt(confirmationCode, phone string) error {
 	// TODO: Replace with actual SMS service (Twilio, AWS SNS, etc.)
-	log.Printf("Sending SMS receipt for transaction %s to %s", confirmationCode, phone)
+	utils.Debug("receipt", "Sending SMS receipt", "confirmation_code", confirmationCode, "phone", phone)
 
 	// Simulate potential failure for testing (remove this in production)
 	// Fail if phone contains "fail" for demonstration purposes
@@ -296,27 +274,25 @@ func sendSMSReceipt(confirmationCode, phone string) error {
 }
 
 // renderReceiptSuccess renders the receipt success component
-func renderReceiptSuccess(w http.ResponseWriter, method string) error {
+func renderReceiptSuccess(w http.ResponseWriter, method string) {
 	// Instead of trying to update the DOM directly, use HX-Trigger to close the modal
 	// and show a green success toast notification
 
 	w.Header().Set("Content-Type", "text/html")
 	w.Header().Set("HX-Trigger", fmt.Sprintf(`{"closeModal": true, "showToastSuccess": "Receipt sent to %s!"}`, method))
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("")) // Empty response since we're just triggering events
-	return nil
+	_, _ = w.Write([]byte("")) // Empty response since we're just triggering events
 }
 
 // renderReceiptError renders the receipt error component
-func renderReceiptError(w http.ResponseWriter, errorMessage string) error {
+func renderReceiptError(w http.ResponseWriter, errorMessage string) {
 	// For errors, show a toast notification and keep the modal open
 	// This allows the user to try again without losing their input
 
 	w.Header().Set("Content-Type", "text/html")
 	w.Header().Set("HX-Trigger", fmt.Sprintf(`{"showToast": "%s"}`, errorMessage))
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("")) // Empty response since we're just showing a toast
-	return nil
+	_, _ = w.Write([]byte("")) // Empty response since we're just showing a toast
 }
 
 // State management utilities
@@ -325,13 +301,13 @@ func renderReceiptError(w http.ResponseWriter, errorMessage string) error {
 // ClearPaymentStates clears all payment-related state
 func ClearPaymentStates() {
 	GlobalPaymentStateManager.ClearAll()
-	log.Println("All payment states cleared")
+	utils.Info("payment", "All payment states cleared")
 }
 
 // ClearExpiredPaymentStates removes expired payment states
 func ClearExpiredPaymentStates() {
 	GlobalPaymentStateManager.CleanupExpired()
-	log.Println("Expired payment states cleared")
+	utils.Info("payment", "Expired payment states cleared")
 }
 
 // GetActivePaymentStatesCount returns the number of active payment states

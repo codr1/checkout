@@ -6,7 +6,7 @@ import (
 )
 
 // Calculate cart summary using local tax rates
-func CalculateCartSummary() (templates.CartSummary, error) {
+func CalculateCartSummary() templates.CartSummary {
 	var subtotal float64
 	for _, service := range AppState.CurrentCart {
 		subtotal += service.Price
@@ -20,7 +20,7 @@ func CalculateCartSummary() (templates.CartSummary, error) {
 		Subtotal: subtotal,
 		Tax:      tax,
 		Total:    total,
-	}, nil
+	}
 }
 
 // calculateLocalTaxes calculates taxes for the current cart using local tax rates

@@ -11,6 +11,7 @@ import (
 
 	"checkout/config"
 	"checkout/templates"
+	"checkout/utils"
 )
 
 // ShouldEnableTipping determines if tipping should be enabled for a given transaction
@@ -67,12 +68,28 @@ func ShouldEnableTipping(transactionAmount float64, cart []templates.Service, lo
 	return true
 }
 
+// GetTippingConfig returns the tipping configuration for a location
+func GetTippingConfig(locationID string) (bool, float64, float64, bool) {
+	// Get tipping settings from the map
+	tippingEnabled := config.GetSetting("tipping", "Tipping Enabled").(bool)
+	minAmount := config.GetSetting("tipping", "Min Amount").(float64)
+	maxAmount := config.GetSetting("tipping", "Max Amount").(float64)
+	allowCustom := config.GetSetting("tipping", "Allow Custom Amounts").(bool)
+
+	// Check location override
+	if locationOverride, exists := config.Config.TippingLocationOverrides[locationID]; exists {
+		tippingEnabled = locationOverride
+	}
+
+	return tippingEnabled, minAmount, maxAmount, allowCustom
+}
+
 // LoadStripeLocationsAndSelect fetches Stripe Terminal Locations and selects one based on config.
 // This function is expected to be called during application initialization.
 // It will log.Fatal if a configured location is not found, or if no location is configured
 // and zero or multiple locations exist.
 func LoadStripeLocationsAndSelect() {
-	log.Println("[Terminal] Fetching Stripe Terminal Locations...")
+	utils.Info("terminal", "Fetching Stripe Terminal Locations")
 	params := &stripe.TerminalLocationListParams{}
 	params.Filters.AddFilter("limit", "", "100") // Adjust limit as needed
 
@@ -91,23 +108,19 @@ func LoadStripeLocationsAndSelect() {
 	}
 
 	AppState.AvailableStripeLocations = allLocations
-	log.Printf("[Terminal] Found %d Stripe Terminal Location(s).", len(allLocations))
+	utils.Info("terminal", "Found Stripe Terminal Locations", "count", len(allLocations))
 	for _, loc := range allLocations {
-		log.Printf("[Terminal]   - Location: %s (ID: %s, Livemode: %t)", loc.DisplayName, loc.ID, loc.Livemode)
+		utils.Debug("terminal", "Available location", "name", loc.DisplayName, "id", loc.ID, "livemode", loc.Livemode)
 	}
 
 	configuredLocationID := config.Config.StripeTerminalLocationID
 
 	if configuredLocationID != "" {
-		log.Printf("[Terminal] Attempting to use configured StripeTerminalLocationID: %s", configuredLocationID)
+		utils.Debug("terminal", "Using configured location ID", "id", configuredLocationID)
 		for _, loc := range AppState.AvailableStripeLocations {
 			if loc.ID == configuredLocationID {
 				AppState.SelectedStripeLocation = loc
-				log.Printf(
-					"[Terminal] Successfully selected Stripe Terminal Location '%s' (ID: %s) from configuration.",
-					loc.DisplayName,
-					loc.ID,
-				)
+				utils.Info("terminal", "Selected Stripe Terminal Location from config", "name", loc.DisplayName, "id", loc.ID)
 				return
 			}
 		}
@@ -123,13 +136,12 @@ func LoadStripeLocationsAndSelect() {
 		)
 	} else {
 		// No StripeTerminalLocationID configured
-		log.Println("[Terminal] StripeTerminalLocationID is not set in config.json.")
+		utils.Debug("terminal", "No location ID configured in config.json")
 		if len(AppState.AvailableStripeLocations) == 0 {
 			log.Fatal("[Terminal] Error: No Stripe Terminal Locations found in your Stripe account. Please create a Location in the Stripe Dashboard (Terminal > Locations) and then set its ID as 'stripeTerminalLocationID' in your config.json.")
 		} else if len(AppState.AvailableStripeLocations) == 1 {
 			AppState.SelectedStripeLocation = AppState.AvailableStripeLocations[0]
-			log.Printf("[Terminal] Automatically selected the only available Stripe Terminal Location: '%s' (ID: %s). Consider setting this as 'stripeTerminalLocationID' in your config.json for explicitness.",
-				AppState.SelectedStripeLocation.DisplayName, AppState.SelectedStripeLocation.ID)
+			utils.Info("terminal", "Auto-selected single available location", "name", AppState.SelectedStripeLocation.DisplayName, "id", AppState.SelectedStripeLocation.ID)
 		} else {
 			// Multiple locations found, and none configured
 			var availableIDs []string
@@ -146,14 +158,10 @@ func LoadStripeLocationsAndSelect() {
 // This function is expected to be called after a location has been selected.
 func LoadStripeReadersForLocation(locationID string) {
 	if locationID == "" {
-		log.Println("[Terminal] No Stripe Terminal Location selected, skipping reader loading.")
+		utils.Debug("terminal", "No location selected, skipping reader loading")
 		return
 	}
-	log.Printf(
-		"[Terminal] Fetching readers for Stripe Terminal Location: %s (ID: %s)...",
-		AppState.SelectedStripeLocation.DisplayName,
-		locationID,
-	)
+	utils.Info("terminal", "Fetching readers for location", "name", AppState.SelectedStripeLocation.DisplayName, "id", locationID)
 
 	params := &stripe.TerminalReaderListParams{}
 	params.Location = stripe.String(locationID)
@@ -168,7 +176,7 @@ func LoadStripeReadersForLocation(locationID string) {
 			ID:              r.ID,
 			Label:           r.Label,
 			Livemode:        r.Livemode,
-			Status:          string(r.Status),
+			Status:          r.Status,
 			DeviceType:      string(r.DeviceType),
 			LocationID:      r.Location.ID,
 			SerialNumber:    r.SerialNumber,
@@ -178,7 +186,7 @@ func LoadStripeReadersForLocation(locationID string) {
 	}
 	if err := i.Err(); err != nil {
 		// Log as an error but don't make it fatal, as per requirements.
-		log.Printf("[Terminal] Error listing Stripe Terminal Readers for Location ID %s: %v", locationID, err)
+		utils.Error("terminal", "Error listing Stripe Terminal Readers", "location_id", locationID, "error", err)
 		AppState.SiteStripeReaders = []templates.StripeReader{} // Ensure it's empty on error
 		return
 	}
@@ -186,16 +194,11 @@ func LoadStripeReadersForLocation(locationID string) {
 	AppState.SiteStripeReaders = readersForLocation
 
 	if len(AppState.SiteStripeReaders) == 0 {
-		log.Printf(
-			"[Terminal] No Stripe Terminal readers found for Location: %s (ID: %s). This is not a fatal error.",
-			AppState.SelectedStripeLocation.DisplayName,
-			locationID,
-		)
+		utils.Warn("terminal", "No readers found for location", "name", AppState.SelectedStripeLocation.DisplayName, "id", locationID)
 	} else {
-		log.Printf("[Terminal] Found %d reader(s) for Location: %s (ID: %s)", len(AppState.SiteStripeReaders), AppState.SelectedStripeLocation.DisplayName, locationID)
+		utils.Info("terminal", "Found readers for location", "count", len(AppState.SiteStripeReaders), "location", AppState.SelectedStripeLocation.DisplayName)
 		for _, r := range AppState.SiteStripeReaders {
-			log.Printf("[Terminal]   - Reader: Label='%s', ID='%s', Status='%s', DeviceType='%s', Serial='%s', IP='%s', SWVer='%s'",
-				r.Label, r.ID, r.Status, r.DeviceType, r.SerialNumber, r.IPAddress, r.DeviceSwVersion)
+			utils.Debug("terminal", "Available reader", "label", r.Label, "id", r.ID, "status", r.Status, "device_type", r.DeviceType, "serial", r.SerialNumber, "ip", r.IPAddress, "sw_version", r.DeviceSwVersion)
 		}
 	}
 }

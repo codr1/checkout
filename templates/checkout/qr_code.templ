@@ -16,7 +16,7 @@ templ QRCodeDisplay(qrBase64 string, paymentLinkID string, totalAmount float64) 
 	@QRCodeDisplayWithEmail(qrBase64, paymentLinkID, totalAmount, "")
 }
 
-// QR Code Display with email - Uses the unified QR payment container
+// QR Code Display with email - Uses the QR payment container
 templ QRCodeDisplayWithEmail(qrBase64 string, paymentLinkID string, totalAmount float64, customerEmail string) {
 	@QRPaymentContainer(qrBase64, paymentLinkID, totalAmount, customerEmail)
 }

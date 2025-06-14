@@ -5,6 +5,7 @@ import (
 
 	"checkout/config"
 	"checkout/templates"
+	"checkout/utils"
 )
 
 // Authentication middleware
@@ -58,8 +59,10 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		// Wrong PIN - direct error message in the target element
 		// Using HTTP 200 status because HTMX only processes successful responses for DOM insertion by default
 		// The error is communicated to the user through the response content, not the HTTP status code
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`<div class="error-message">Invalid password. Please try again.</div>`))
+		w.Header().Set("Content-Type", "text/html")
+		if _, err := w.Write([]byte(`<div class="error-message">Invalid password. Please try again.</div>`)); err != nil {
+			utils.Error("auth", "Error writing error message to response", "error", err)
+		}
 		return
 	}
 

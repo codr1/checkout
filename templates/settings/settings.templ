@@ -1,0 +1,370 @@
+package settings
+
+import (
+	"fmt"
+	"checkout/config"
+)
+
+// SettingsPage represents the main settings page
+templ SettingsPage() {
+	<div class="settings-page">
+		<div class="settings-header">
+			<h1>Settings</h1>
+			<div class="search-container">
+				<input 
+					type="text" 
+					id="settings-search" 
+					placeholder="Search settings..." 
+					hx-get="/settings/search"
+					hx-trigger="keyup changed delay:500ms"
+					hx-target="#settings-content"
+					hx-indicator="#search-indicator"
+				/>
+				<div id="search-indicator" class="htmx-indicator">
+					<div class="spinner"></div>
+				</div>
+			</div>
+		</div>
+
+		<div id="settings-content" class="settings-content">
+			@SettingsSections()
+		</div>
+	</div>
+}
+
+// SettingsSections renders all settings sections
+templ SettingsSections() {
+	<div class="settings-sections">
+		@StripeSection()
+		@BusinessSection()
+		@TaxSection()
+		@SystemSection()
+		@TippingSection()
+		@SMSSection()
+	</div>
+}
+
+// StripeSection renders Stripe-related settings
+templ StripeSection() {
+	<div class="settings-section" data-section="stripe">
+		<h2>Stripe Configuration</h2>
+		<div class="settings-grid">
+			<div class="setting-item">
+				<label for="stripe-secret-key">Stripe Secret Key</label>
+				<input 
+					type="password" 
+					id="stripe-secret-key" 
+					name="stripeSecretKey" 
+					value={ config.Config.StripeSecretKey }
+					hx-put="/settings/update"
+					hx-trigger="change"
+				/>
+			</div>
+			<div class="setting-item">
+				<label for="stripe-public-key">Stripe Public Key</label>
+				<input 
+					type="text" 
+					id="stripe-public-key" 
+					name="stripePublicKey" 
+					value={ config.Config.StripePublicKey }
+					hx-put="/settings/update"
+					hx-trigger="change"
+				/>
+			</div>
+			<div class="setting-item">
+				<label for="stripe-webhook-secret">Stripe Webhook Secret</label>
+				<input 
+					type="password" 
+					id="stripe-webhook-secret" 
+					name="stripeWebhookSecret" 
+					value={ config.Config.StripeWebhookSecret }
+					hx-put="/settings/update"
+					hx-trigger="change"
+				/>
+			</div>
+			<div class="setting-item">
+				<label for="stripe-terminal-location">Stripe Terminal Location</label>
+				<input 
+					type="text" 
+					id="stripe-terminal-location" 
+					name="stripeTerminalLocationID" 
+					value={ config.Config.StripeTerminalLocationID }
+					hx-put="/settings/update"
+					hx-trigger="change"
+				/>
+			</div>
+		</div>
+	</div>
+}
+
+// BusinessSection renders business-related settings
+templ BusinessSection() {
+	<div class="settings-section" data-section="business">
+		<h2>Business Information</h2>
+		<div class="settings-grid">
+			<div class="setting-item">
+				<label for="business-name">Business Name</label>
+				<input 
+					type="text" 
+					id="business-name" 
+					name="businessName" 
+					value={ config.Config.BusinessName }
+					hx-put="/settings/update"
+					hx-trigger="change"
+				/>
+			</div>
+			<div class="setting-item">
+				<label for="business-street">Street Address</label>
+				<input 
+					type="text" 
+					id="business-street" 
+					name="businessStreet" 
+					value={ config.Config.BusinessStreet }
+					hx-put="/settings/update"
+					hx-trigger="change"
+				/>
+			</div>
+			<div class="setting-item">
+				<label for="business-city">City</label>
+				<input 
+					type="text" 
+					id="business-city" 
+					name="businessCity" 
+					value={ config.Config.BusinessCity }
+					hx-put="/settings/update"
+					hx-trigger="change"
+				/>
+			</div>
+			<div class="setting-item">
+				<label for="business-state">State</label>
+				<input 
+					type="text" 
+					id="business-state" 
+					name="businessState" 
+					value={ config.Config.BusinessState }
+					hx-put="/settings/update"
+					hx-trigger="change"
+				/>
+			</div>
+			<div class="setting-item">
+				<label for="business-zip">ZIP Code</label>
+				<input 
+					type="text" 
+					id="business-zip" 
+					name="businessZIP" 
+					value={ config.Config.BusinessZIP }
+					hx-put="/settings/update"
+					hx-trigger="change"
+				/>
+			</div>
+		</div>
+	</div>
+}
+
+// TaxSection renders tax-related settings
+templ TaxSection() {
+	<div class="settings-section" data-section="tax">
+		<h2>Tax Configuration</h2>
+		<div class="settings-grid">
+			<div class="setting-item">
+				<label for="business-tax-id">Business Tax ID (EIN)</label>
+				<input 
+					type="text" 
+					id="business-tax-id" 
+					name="businessTaxID" 
+					value={ config.Config.BusinessTaxID }
+					hx-put="/settings/update"
+					hx-trigger="change"
+				/>
+			</div>
+			<div class="setting-item">
+				<label for="sales-tax-number">Sales Tax Number</label>
+				<input 
+					type="text" 
+					id="sales-tax-number" 
+					name="salesTaxNumber" 
+					value={ config.Config.SalesTaxNumber }
+					hx-put="/settings/update"
+					hx-trigger="change"
+				/>
+			</div>
+			<div class="setting-item">
+				<label for="vat-number">VAT Number</label>
+				<input 
+					type="text" 
+					id="vat-number" 
+					name="vatNumber" 
+					value={ config.Config.VATNumber }
+					hx-put="/settings/update"
+					hx-trigger="change"
+				/>
+			</div>
+			<div class="setting-item">
+				<label for="default-tax-rate">Default Tax Rate (%)</label>
+				<input 
+					type="number" 
+					id="default-tax-rate" 
+					name="defaultTaxRate" 
+					value={ fmt.Sprintf("%.4f", config.Config.DefaultTaxRate * 100) }
+					step="0.0001"
+					min="0"
+					max="100"
+					hx-put="/settings/update"
+					hx-trigger="change"
+				/>
+			</div>
+		</div>
+	</div>
+}
+
+// SystemSection renders system-related settings
+templ SystemSection() {
+	<div class="settings-section" data-section="system">
+		<h2>System Configuration</h2>
+		<div class="settings-grid">
+			<div class="setting-item">
+				<label for="port">Port</label>
+				<input 
+					type="text" 
+					id="port" 
+					name="port" 
+					value={ config.Config.Port }
+					hx-put="/settings/update"
+					hx-trigger="change"
+				/>
+			</div>
+			<div class="setting-item">
+				<label for="data-dir">Data Directory</label>
+				<input 
+					type="text" 
+					id="data-dir" 
+					name="dataDir" 
+					value={ config.Config.DataDir }
+					hx-put="/settings/update"
+					hx-trigger="change"
+				/>
+			</div>
+			<div class="setting-item">
+				<label for="transactions-dir">Transactions Directory</label>
+				<input 
+					type="text" 
+					id="transactions-dir" 
+					name="transactionsDir" 
+					value={ config.Config.TransactionsDir }
+					hx-put="/settings/update"
+					hx-trigger="change"
+				/>
+			</div>
+			<div class="setting-item">
+				<label for="website-name">Website Name</label>
+				<input 
+					type="text" 
+					id="website-name" 
+					name="websiteName" 
+					value={ config.Config.WebsiteName }
+					hx-put="/settings/update"
+					hx-trigger="change"
+				/>
+			</div>
+		</div>
+	</div>
+}
+
+// TippingSection renders tipping-related settings
+templ TippingSection() {
+	<div class="settings-section" data-section="tipping">
+		<h2>Tipping Configuration</h2>
+		<div class="settings-grid">
+			<div class="setting-item">
+				<label for="tipping-enabled">Enable Tipping</label>
+				<input 
+					type="checkbox" 
+					id="tipping-enabled" 
+					name="tippingEnabled" 
+					checked={ config.Config.TippingEnabled }
+					hx-put="/settings/update"
+					hx-trigger="change"
+				/>
+			</div>
+			<div class="setting-item">
+				<label for="tipping-min-amount">Minimum Amount for Tipping ($)</label>
+				<input 
+					type="number" 
+					id="tipping-min-amount" 
+					name="tippingMinAmount" 
+					value={ fmt.Sprintf("%.2f", config.Config.TippingMinAmount) }
+					step="0.01"
+					min="0"
+					hx-put="/settings/update"
+					hx-trigger="change"
+				/>
+			</div>
+			<div class="setting-item">
+				<label for="tipping-max-amount">Maximum Amount for Tipping ($)</label>
+				<input 
+					type="number" 
+					id="tipping-max-amount" 
+					name="tippingMaxAmount" 
+					value={ fmt.Sprintf("%.2f", config.Config.TippingMaxAmount) }
+					step="0.01"
+					min="0"
+					hx-put="/settings/update"
+					hx-trigger="change"
+				/>
+			</div>
+			<div class="setting-item">
+				<label for="tipping-allow-custom">Allow Custom Tip Amounts</label>
+				<input 
+					type="checkbox" 
+					id="tipping-allow-custom" 
+					name="tippingAllowCustomAmount" 
+					checked={ config.Config.TippingAllowCustomAmount }
+					hx-put="/settings/update"
+					hx-trigger="change"
+				/>
+			</div>
+		</div>
+	</div>
+}
+
+// SMSSection renders SMS-related settings
+templ SMSSection() {
+	<div class="settings-section" data-section="sms">
+		<h2>SMS Configuration (AWS SNS)</h2>
+		<div class="settings-grid">
+			<div class="setting-item">
+				<label for="aws-access-key">AWS Access Key ID</label>
+				<input 
+					type="password" 
+					id="aws-access-key" 
+					name="awsAccessKeyId" 
+					value={ config.Config.AWSAccessKeyID }
+					hx-put="/settings/update"
+					hx-trigger="change"
+				/>
+			</div>
+			<div class="setting-item">
+				<label for="aws-secret-key">AWS Secret Access Key</label>
+				<input 
+					type="password" 
+					id="aws-secret-key" 
+					name="awsSecretAccessKey" 
+					value={ config.Config.AWSSecretAccessKey }
+					hx-put="/settings/update"
+					hx-trigger="change"
+				/>
+			</div>
+			<div class="setting-item">
+				<label for="aws-region">AWS Region</label>
+				<input 
+					type="text" 
+					id="aws-region" 
+					name="awsRegion" 
+					value={ config.Config.AWSRegion }
+					hx-put="/settings/update"
+					hx-trigger="change"
+				/>
+			</div>
+		</div>
+	</div>
+} 

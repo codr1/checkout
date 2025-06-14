@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 
 	"checkout/templates"
+	"checkout/utils"
 )
 
 // Default configuration values
@@ -23,44 +25,36 @@ const (
 const (
 	// Polling intervals
 	PaymentPollingInterval = "2s"
-	
-	// Timeout durations - unified for all payment types  
+
+	// Timeout durations for all payment types
 	// Backend timeout for progress calculations and polling logic
 	PaymentTimeout = 120 * time.Second
-	
+
 	// Frontend HTMX auto-expire delay (same as timeout for consistency)
 	// This acts as a safety net if browser closes or polling stops
 	PaymentExpireDelay = "120s"
-	
+
 	// Failsafe timeout for client-side safety net (server timeout + 3 seconds)
 	// If SSE doesn't send completion event, client triggers hard refresh
-	PaymentFailsafeTimeout = 123 * time.Second
-	
-	// Polling endpoints
-	QRPollEndpoint      = "/check-paymentlink-status"
-	TerminalPollEndpoint = "/check-terminal-payment-status"
-	
-	// Expiration endpoints
-	QRExpireEndpoint      = "/expire-payment-link"
-	TerminalExpireEndpoint = "/expire-terminal-payment"
-	
-	// Cancel endpoints
-	QRCancelEndpoint      = "/cancel-payment-link"
-	TerminalCancelEndpoint = "/cancel-terminal-payment"
+	PaymentFailsafeTimeout = (120 + 3) * time.Second
+
+	// Payment status endpoints
+	PollEndpoint          = "/get-payment-status"
+	CancelRefreshEndpoint = "/cancel-or-refresh-payment"
 )
 
 // PaymentProgressMessages provides consistent status messages
 var PaymentProgressMessages = map[string]map[string]string{
 	"qr": {
-		"default":     "Waiting for QR code scan...",
-		"processing":  "Processing QR payment...",
-		"scanning":    "Please scan the QR code with your camera app",
+		"default":    "Waiting for QR code scan...",
+		"processing": "Processing QR payment...",
+		"scanning":   "Please scan the QR code with your camera app",
 	},
 	"terminal": {
-		"default":     "Processing on terminal...",
-		"processing":  "Please complete the transaction on the payment terminal",
-		"waiting":     "Waiting for terminal interaction...",
-		"receipt":     "Please take your receipt from the terminal",
+		"default":    "Processing on terminal...",
+		"processing": "Please complete the transaction on the payment terminal",
+		"waiting":    "Waiting for terminal interaction...",
+		"receipt":    "Please take your receipt from the terminal",
 	},
 }
 
@@ -75,8 +69,87 @@ func GetPaymentMessage(paymentType, status string) string {
 	return "Processing payment..."
 }
 
+// GetPaymentTimeoutSeconds returns the payment timeout as an integer (for JavaScript/templates)
+func GetPaymentTimeoutSeconds() int {
+	return int(PaymentTimeout.Seconds())
+}
+
+// GetFailsafeTimeoutSeconds returns the failsafe timeout as an integer (for JavaScript/templates)
+func GetFailsafeTimeoutSeconds() int {
+	return int(PaymentFailsafeTimeout.Seconds())
+}
+
 // Config holds the application configuration
 var Config templates.AppConfig
+
+// SettingsMap provides a centralized map of all settings for easy access and searching
+var SettingsMap = map[string]map[string]interface{}{
+	"stripe": {
+		"Stripe Secret Key":     Config.StripeSecretKey,
+		"Stripe Public Key":     Config.StripePublicKey,
+		"Stripe Webhook Secret": Config.StripeWebhookSecret,
+		"Terminal Location":     Config.StripeTerminalLocationID,
+	},
+	"business": {
+		"Business Name":  Config.BusinessName,
+		"Street Address": Config.BusinessStreet,
+		"City":           Config.BusinessCity,
+		"State":          Config.BusinessState,
+		"ZIP Code":       Config.BusinessZIP,
+	},
+	"tax": {
+		"Business Tax ID":  Config.BusinessTaxID,
+		"Sales Tax Number": Config.SalesTaxNumber,
+		"VAT Number":       Config.VATNumber,
+	},
+	"system": {
+		"Port":             Config.Port,
+		"Data Directory":   Config.DataDir,
+		"Transactions Dir": Config.TransactionsDir,
+		"Website Name":     Config.WebsiteName,
+	},
+	"tipping": {
+		"Tipping Enabled":      Config.TippingEnabled,
+		"Min Amount":           Config.TippingMinAmount,
+		"Max Amount":           Config.TippingMaxAmount,
+		"Allow Custom Amounts": Config.TippingAllowCustomAmount,
+	},
+	"sms": {
+		"AWS Access Key": Config.AWSAccessKeyID,
+		"AWS Region":     Config.AWSRegion,
+	},
+}
+
+// UpdateSettingsMap updates the settings map with current config values
+func UpdateSettingsMap() {
+	SettingsMap["stripe"]["Stripe Secret Key"] = Config.StripeSecretKey
+	SettingsMap["stripe"]["Stripe Public Key"] = Config.StripePublicKey
+	SettingsMap["stripe"]["Stripe Webhook Secret"] = Config.StripeWebhookSecret
+	SettingsMap["stripe"]["Terminal Location"] = Config.StripeTerminalLocationID
+
+	SettingsMap["business"]["Business Name"] = Config.BusinessName
+	SettingsMap["business"]["Street Address"] = Config.BusinessStreet
+	SettingsMap["business"]["City"] = Config.BusinessCity
+	SettingsMap["business"]["State"] = Config.BusinessState
+	SettingsMap["business"]["ZIP Code"] = Config.BusinessZIP
+
+	SettingsMap["tax"]["Business Tax ID"] = Config.BusinessTaxID
+	SettingsMap["tax"]["Sales Tax Number"] = Config.SalesTaxNumber
+	SettingsMap["tax"]["VAT Number"] = Config.VATNumber
+
+	SettingsMap["system"]["Port"] = Config.Port
+	SettingsMap["system"]["Data Directory"] = Config.DataDir
+	SettingsMap["system"]["Transactions Dir"] = Config.TransactionsDir
+	SettingsMap["system"]["Website Name"] = Config.WebsiteName
+
+	SettingsMap["tipping"]["Tipping Enabled"] = Config.TippingEnabled
+	SettingsMap["tipping"]["Min Amount"] = Config.TippingMinAmount
+	SettingsMap["tipping"]["Max Amount"] = Config.TippingMaxAmount
+	SettingsMap["tipping"]["Allow Custom Amounts"] = Config.TippingAllowCustomAmount
+
+	SettingsMap["sms"]["AWS Access Key"] = Config.AWSAccessKeyID
+	SettingsMap["sms"]["AWS Region"] = Config.AWSRegion
+}
 
 // Load loads the application configuration from file or prompts user to create it
 func Load() error {
@@ -88,9 +161,8 @@ func Load() error {
 	}
 
 	// Check if config file exists
-	_, err := os.Stat(configPath)
-	if os.IsNotExist(err) {
-		fmt.Println("Configuration file not found at:", configPath)
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		utils.Info("config", "Configuration file not found", "config_path", configPath)
 		// Config file doesn't exist, ask user if they want to create it
 		fmt.Print("Would you like to create a configuration file? (y/n): ")
 		reader := bufio.NewReader(os.Stdin)
@@ -114,7 +186,7 @@ func Load() error {
 			return fmt.Errorf("error saving configuration: %w", err)
 		}
 
-		fmt.Println("Configuration file created successfully at:", configPath)
+		utils.Info("config", "Configuration file created successfully", "config_path", configPath)
 		return nil
 	} else if err != nil {
 		return fmt.Errorf("error checking configuration file: %w", err)
@@ -142,12 +214,22 @@ func Load() error {
 		Config.TransactionsDir = DefaultTransactionsDir
 	}
 
-	// Check for environment variable override for Stripe Secret Key
+	// Override with environment variable if available
 	envStripeKey := os.Getenv("STRIPE_SECRET_KEY")
 	if envStripeKey != "" && envStripeKey != Config.StripeSecretKey {
-		fmt.Println("Using environment variable for Stripe Secret Key (overrides config file).")
+		utils.Info("config", "Using environment variable for Stripe Secret Key (overrides config file)")
 		Config.StripeSecretKey = envStripeKey
 	}
+
+	// Parse tax rate
+	if taxRateStr := os.Getenv("DEFAULT_TAX_RATE"); taxRateStr != "" {
+		if _, err := fmt.Sscanf(taxRateStr, "%f", &Config.DefaultTaxRate); err != nil {
+			utils.Warn("config", "Invalid DEFAULT_TAX_RATE value, using default", "value", taxRateStr, "error", err)
+		}
+	}
+
+	// Initialize the settings map with current values
+	UpdateSettingsMap()
 
 	return nil
 }
@@ -314,9 +396,11 @@ func promptForConfig() error {
 		Config.DefaultTaxRate = 0.0625 // Default to 6.25%
 	} else {
 		// Simple parsing - you might want to add more validation
-		fmt.Sscanf(taxRateStr, "%f", &Config.DefaultTaxRate)
-		if Config.DefaultTaxRate < 0 || Config.DefaultTaxRate > 1 {
-			fmt.Println("Invalid tax rate, using default 6.25%")
+		if _, err := fmt.Sscanf(taxRateStr, "%f", &Config.DefaultTaxRate); err != nil {
+			utils.Warn("config", "Invalid tax rate format, using default 6.25%", "value", taxRateStr, "error", err)
+			Config.DefaultTaxRate = 0.0625
+		} else if Config.DefaultTaxRate < 0 || Config.DefaultTaxRate > 1 {
+			utils.Warn("config", "Invalid tax rate, using default 6.25%")
 			Config.DefaultTaxRate = 0.0625
 		}
 	}
@@ -336,11 +420,11 @@ func promptForConfig() error {
 
 	// Initialize tipping defaults
 	Config.TippingLocationOverrides = make(map[string]bool)
-	Config.TippingMinAmount = 0.0 // No minimum by default
-	Config.TippingMaxAmount = 0.0 // No maximum by default (0 = unlimited)
+	Config.TippingMinAmount = 0.0                           // No minimum by default
+	Config.TippingMaxAmount = 0.0                           // No maximum by default (0 = unlimited)
 	Config.TippingPresetPercentages = []int{15, 18, 20, 25} // Common preset percentages
-	Config.TippingAllowCustomAmount = true // Allow custom amounts by default
-	Config.TippingServiceCategoriesOnly = []string{} // Empty = all categories
+	Config.TippingAllowCustomAmount = true                  // Allow custom amounts by default
+	Config.TippingServiceCategoriesOnly = []string{}        // Empty = all categories
 
 	if Config.TippingEnabled {
 		fmt.Print("Minimum transaction amount for tipping (in dollars, 0 for no minimum): ")
@@ -350,7 +434,9 @@ func promptForConfig() error {
 		}
 		minAmountStr = strings.TrimSpace(minAmountStr)
 		if minAmountStr != "" {
-			fmt.Sscanf(minAmountStr, "%f", &Config.TippingMinAmount)
+			if _, err := fmt.Sscanf(minAmountStr, "%f", &Config.TippingMinAmount); err != nil {
+				utils.Warn("config", "Invalid TIPPING_MIN_AMOUNT value, using default", "value", minAmountStr, "error", err)
+			}
 			if Config.TippingMinAmount < 0 {
 				Config.TippingMinAmount = 0.0
 			}
@@ -363,7 +449,9 @@ func promptForConfig() error {
 		}
 		maxAmountStr = strings.TrimSpace(maxAmountStr)
 		if maxAmountStr != "" {
-			fmt.Sscanf(maxAmountStr, "%f", &Config.TippingMaxAmount)
+			if _, err := fmt.Sscanf(maxAmountStr, "%f", &Config.TippingMaxAmount); err != nil {
+				utils.Warn("config", "Invalid TIPPING_MAX_AMOUNT value, using default", "value", maxAmountStr, "error", err)
+			}
 			if Config.TippingMaxAmount < 0 {
 				Config.TippingMaxAmount = 0.0
 			}
@@ -375,11 +463,50 @@ func promptForConfig() error {
 			return err
 		}
 		customTipInput = strings.TrimSpace(strings.ToLower(customTipInput))
-		Config.TippingAllowCustomAmount = !(customTipInput == "n" || customTipInput == "no")
+		Config.TippingAllowCustomAmount = (customTipInput != "n" && customTipInput != "no")
 	}
 
-	fmt.Printf("Tipping configuration: Enabled=%v, MinAmount=%.2f, MaxAmount=%.2f\n", 
-		Config.TippingEnabled, Config.TippingMinAmount, Config.TippingMaxAmount)
+	utils.Info("config", "Tipping configuration complete", "enabled", Config.TippingEnabled, "min_amount", Config.TippingMinAmount, "max_amount", Config.TippingMaxAmount)
+
+	// AWS SNS Configuration for SMS receipts (optional)
+	fmt.Println("\n=== SMS Receipt Configuration (Optional) ===")
+	fmt.Print("Configure AWS SNS for SMS receipts? (y/n) [default: n]: ")
+	smsInput, err := reader.ReadString('\n')
+	if err != nil {
+		return err
+	}
+	smsInput = strings.TrimSpace(strings.ToLower(smsInput))
+
+	if smsInput == "y" || smsInput == "yes" {
+		fmt.Print("Enter AWS Access Key ID: ")
+		awsKeyID, err := reader.ReadString('\n')
+		if err != nil {
+			return err
+		}
+		Config.AWSAccessKeyID = sanitizeInput(strings.TrimSpace(awsKeyID))
+
+		fmt.Print("Enter AWS Secret Access Key: ")
+		awsSecret, err := reader.ReadString('\n')
+		if err != nil {
+			return err
+		}
+		Config.AWSSecretAccessKey = sanitizeInput(strings.TrimSpace(awsSecret))
+
+		fmt.Print("Enter AWS Region (e.g., us-east-1): ")
+		awsRegion, err := reader.ReadString('\n')
+		if err != nil {
+			return err
+		}
+		Config.AWSRegion = sanitizeInput(strings.TrimSpace(awsRegion))
+		if Config.AWSRegion == "" {
+			Config.AWSRegion = "us-east-1" // Default region
+		}
+	} else {
+		// Initialize with empty values so they appear in config.json
+		Config.AWSAccessKeyID = ""
+		Config.AWSSecretAccessKey = ""
+		Config.AWSRegion = ""
+	}
 
 	return nil
 }
@@ -397,35 +524,93 @@ func sanitizeInput(input string) string {
 	return result
 }
 
-// saveConfig saves the configuration to file
+// saveConfig saves the configuration to a file
 func saveConfig(path string) error {
-	jsonData, err := json.MarshalIndent(Config, "", "  ")
-	if err != nil {
-		return fmt.Errorf("error marshalling configuration: %w", err)
+	// Create data directory if it doesn't exist
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("failed to create data directory: %w", err)
 	}
 
-	if err := os.WriteFile(path, jsonData, 0600); err != nil {
+	// Marshal config to JSON
+	data, err := json.MarshalIndent(Config, "", "  ")
+	if err != nil {
+		return fmt.Errorf("error marshaling configuration: %w", err)
+	}
+
+	// Write to file
+	if err := os.WriteFile(path, data, 0600); err != nil {
 		return fmt.Errorf("error writing configuration file: %w", err)
 	}
+
+	// Update the settings map with current values
+	UpdateSettingsMap()
 
 	return nil
 }
 
-// GetStripeKey returns the Stripe API key, checking environment variable first
+// GetSetting retrieves a setting value from the settings map
+func GetSetting(section, key string) interface{} {
+	if sectionSettings, ok := SettingsMap[section]; ok {
+		if value, ok := sectionSettings[key]; ok {
+			return value
+		}
+	}
+	return nil
+}
+
+// SetSetting updates a setting value in the settings map and saves to config
+func SetSetting(section, key string, value interface{}) error {
+	if sectionSettings, ok := SettingsMap[section]; ok {
+		if _, ok := sectionSettings[key]; ok {
+			// Update the settings map
+			sectionSettings[key] = value
+
+			// Update the config struct using reflection
+			configValue := reflect.ValueOf(&Config).Elem()
+			fieldName := strings.ReplaceAll(key, " ", "")
+			field := configValue.FieldByName(fieldName)
+			if field.IsValid() && field.CanSet() {
+				// Convert the value to the correct type
+				fieldType := field.Type()
+				valueType := reflect.TypeOf(value)
+
+				if fieldType != valueType {
+					// Handle type conversion
+					switch fieldType.Kind() {
+					case reflect.Bool:
+						field.SetBool(value.(bool))
+					case reflect.Float64:
+						field.SetFloat(value.(float64))
+					case reflect.String:
+						field.SetString(value.(string))
+					default:
+						return fmt.Errorf("unsupported field type: %v", fieldType)
+					}
+				} else {
+					field.Set(reflect.ValueOf(value))
+				}
+			}
+
+			// Save the updated config
+			configPath := fmt.Sprintf("%s/config.json", Config.DataDir)
+			return saveConfig(configPath)
+		}
+		return fmt.Errorf("setting '%s' not found in section '%s'", key, section)
+	}
+	return fmt.Errorf("section '%s' not found", section)
+}
+
+// GetStripeKey returns the Stripe secret key from config or environment
 func GetStripeKey() string {
-	// Environment variable takes precedence
-	envKey := os.Getenv("STRIPE_SECRET_KEY")
-	if envKey != "" {
-		fmt.Println("[INFO] Using Stripe key from environment variable")
-		return envKey
+	// First try environment variable
+	if key := os.Getenv("STRIPE_SECRET_KEY"); key != "" {
+		return key
 	}
 
-	if Config.StripeSecretKey != "" {
-		fmt.Println("[INFO] Using Stripe key from config file")
-		return Config.StripeSecretKey
+	// Then try config
+	if key := GetSetting("stripe", "Stripe Secret Key"); key != nil {
+		return key.(string)
 	}
-
-	fmt.Println("[ERROR] Stripe key not found in environment or config")
 	return ""
 }
 
@@ -434,34 +619,30 @@ func GetStripePublicKey() string {
 	// Environment variable takes precedence
 	envKey := os.Getenv("STRIPE_PUBLIC_KEY")
 	if envKey != "" {
-		fmt.Println("[INFO] Using Stripe publishable key from environment variable")
+		utils.Info("config", "Using Stripe publishable key from environment variable")
 		return envKey
 	}
 
 	if Config.StripePublicKey != "" {
-		fmt.Println("[INFO] Using Stripe publishable key from config file")
+		utils.Info("config", "Using Stripe publishable key from config file")
 		return Config.StripePublicKey
 	}
 
-	fmt.Println("[ERROR] Stripe publishable key not found in environment or config")
+	utils.Error("config", "Stripe publishable key not found", "checked", "environment and config")
 	return ""
 }
 
-// GetStripeWebhookSecret returns the Stripe webhook secret
+// GetStripeWebhookSecret returns the webhook secret from config or environment
 func GetStripeWebhookSecret() string {
-	// Environment variable takes precedence
-	envSecret := os.Getenv("STRIPE_WEBHOOK_SECRET")
-	if envSecret != "" {
-		fmt.Println("[INFO] Using Stripe webhook secret from environment variable")
-		return envSecret
+	// First try environment variable
+	if secret := os.Getenv("STRIPE_WEBHOOK_SECRET"); secret != "" {
+		return secret
 	}
 
-	if Config.StripeWebhookSecret != "" {
-		fmt.Println("[INFO] Using Stripe webhook secret from config file")
-		return Config.StripeWebhookSecret
+	// Then try config
+	if secret := GetSetting("stripe", "Stripe Webhook Secret"); secret != nil {
+		return secret.(string)
 	}
-
-	fmt.Println("[WARN] Stripe webhook secret not found in environment or config")
 	return ""
 }
 
@@ -470,9 +651,8 @@ func SetTippingLocationOverride(locationID string, enabled bool) error {
 	if Config.TippingLocationOverrides == nil {
 		Config.TippingLocationOverrides = make(map[string]bool)
 	}
-	
+
 	Config.TippingLocationOverrides[locationID] = enabled
-	
 	// Save the updated configuration
 	configPath := filepath.Join(DefaultDataDir, "config.json")
 	return saveConfig(configPath)
@@ -483,9 +663,8 @@ func RemoveTippingLocationOverride(locationID string) error {
 	if Config.TippingLocationOverrides == nil {
 		return nil // Nothing to remove
 	}
-	
+
 	delete(Config.TippingLocationOverrides, locationID)
-	
 	// Save the updated configuration
 	configPath := filepath.Join(DefaultDataDir, "config.json")
 	return saveConfig(configPath)
@@ -497,7 +676,21 @@ func GetTippingEnabledForLocation(locationID string) bool {
 	if override, exists := Config.TippingLocationOverrides[locationID]; exists {
 		return override
 	}
-	
 	// Fall back to global setting
 	return Config.TippingEnabled
+}
+
+// GetTippingConfig returns tipping configuration
+func GetTippingConfig(locationID string) (bool, float64, float64, bool) {
+	tippingEnabled := GetSetting("tipping", "Tipping Enabled").(bool)
+	minAmount := GetSetting("tipping", "Min Amount").(float64)
+	maxAmount := GetSetting("tipping", "Max Amount").(float64)
+	allowCustom := GetSetting("tipping", "Allow Custom Amounts").(bool)
+
+	// Check location override
+	if locationOverride, exists := Config.TippingLocationOverrides[locationID]; exists {
+		tippingEnabled = locationOverride
+	}
+
+	return tippingEnabled, minAmount, maxAmount, allowCustom
 }

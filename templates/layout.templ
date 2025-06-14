@@ -141,9 +141,9 @@ templ LoginPage() {
 			<img src="/static/images/PicklePOS.png" alt="PicklePOS Logo" class="login-logo"/>
 			<h1>POS System Login</h1>
 			<div id="login-error"></div>
-			<form hx-post="/login" hx-target="#login-error">
+			<form method="POST" action="/login" hx-post="/login" hx-target="#login-error">
 				<div>
-					<input type="password" name="password" placeholder="Enter Password" autofocus/>
+					<input type="password" name="password" placeholder="Enter Password" autofocus required/>
 				</div>
 				<div>
 					<button type="submit">Login</button>
