@@ -1,8 +1,3 @@
-.settings-page {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 2rem;
-}
 
 .settings-header {
     display: flex;
@@ -149,7 +144,4 @@
     padding: 0.5rem;
 }
 
-/* Hide sections that don't match search */
-.settings-section:not(.has-match) {
-    display: none;
 } 

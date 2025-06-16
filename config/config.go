@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
@@ -81,75 +82,6 @@ func GetFailsafeTimeoutSeconds() int {
 
 // Config holds the application configuration
 var Config templates.AppConfig
-
-// SettingsMap provides a centralized map of all settings for easy access and searching
-var SettingsMap = map[string]map[string]interface{}{
-	"stripe": {
-		"Stripe Secret Key":     Config.StripeSecretKey,
-		"Stripe Public Key":     Config.StripePublicKey,
-		"Stripe Webhook Secret": Config.StripeWebhookSecret,
-		"Terminal Location":     Config.StripeTerminalLocationID,
-	},
-	"business": {
-		"Business Name":  Config.BusinessName,
-		"Street Address": Config.BusinessStreet,
-		"City":           Config.BusinessCity,
-		"State":          Config.BusinessState,
-		"ZIP Code":       Config.BusinessZIP,
-	},
-	"tax": {
-		"Business Tax ID":  Config.BusinessTaxID,
-		"Sales Tax Number": Config.SalesTaxNumber,
-		"VAT Number":       Config.VATNumber,
-	},
-	"system": {
-		"Port":             Config.Port,
-		"Data Directory":   Config.DataDir,
-		"Transactions Dir": Config.TransactionsDir,
-		"Website Name":     Config.WebsiteName,
-	},
-	"tipping": {
-		"Tipping Enabled":      Config.TippingEnabled,
-		"Min Amount":           Config.TippingMinAmount,
-		"Max Amount":           Config.TippingMaxAmount,
-		"Allow Custom Amounts": Config.TippingAllowCustomAmount,
-	},
-	"sms": {
-		"AWS Access Key": Config.AWSAccessKeyID,
-		"AWS Region":     Config.AWSRegion,
-	},
-}
-
-// UpdateSettingsMap updates the settings map with current config values
-func UpdateSettingsMap() {
-	SettingsMap["stripe"]["Stripe Secret Key"] = Config.StripeSecretKey
-	SettingsMap["stripe"]["Stripe Public Key"] = Config.StripePublicKey
-	SettingsMap["stripe"]["Stripe Webhook Secret"] = Config.StripeWebhookSecret
-	SettingsMap["stripe"]["Terminal Location"] = Config.StripeTerminalLocationID
-
-	SettingsMap["business"]["Business Name"] = Config.BusinessName
-	SettingsMap["business"]["Street Address"] = Config.BusinessStreet
-	SettingsMap["business"]["City"] = Config.BusinessCity
-	SettingsMap["business"]["State"] = Config.BusinessState
-	SettingsMap["business"]["ZIP Code"] = Config.BusinessZIP
-
-	SettingsMap["tax"]["Business Tax ID"] = Config.BusinessTaxID
-	SettingsMap["tax"]["Sales Tax Number"] = Config.SalesTaxNumber
-	SettingsMap["tax"]["VAT Number"] = Config.VATNumber
-
-	SettingsMap["system"]["Port"] = Config.Port
-	SettingsMap["system"]["Data Directory"] = Config.DataDir
-	SettingsMap["system"]["Transactions Dir"] = Config.TransactionsDir
-	SettingsMap["system"]["Website Name"] = Config.WebsiteName
-
-	SettingsMap["tipping"]["Tipping Enabled"] = Config.TippingEnabled
-	SettingsMap["tipping"]["Min Amount"] = Config.TippingMinAmount
-	SettingsMap["tipping"]["Max Amount"] = Config.TippingMaxAmount
-	SettingsMap["tipping"]["Allow Custom Amounts"] = Config.TippingAllowCustomAmount
-
-	SettingsMap["sms"]["AWS Access Key"] = Config.AWSAccessKeyID
-	SettingsMap["sms"]["AWS Region"] = Config.AWSRegion
-}
 
 // Load loads the application configuration from file or prompts user to create it
 func Load() error {
@@ -227,9 +159,6 @@ func Load() error {
 			utils.Warn("config", "Invalid DEFAULT_TAX_RATE value, using default", "value", taxRateStr, "error", err)
 		}
 	}
-
-	// Initialize the settings map with current values
-	UpdateSettingsMap()
 
 	return nil
 }
@@ -542,62 +471,7 @@ func saveConfig(path string) error {
 		return fmt.Errorf("error writing configuration file: %w", err)
 	}
 
-	// Update the settings map with current values
-	UpdateSettingsMap()
-
 	return nil
-}
-
-// GetSetting retrieves a setting value from the settings map
-func GetSetting(section, key string) interface{} {
-	if sectionSettings, ok := SettingsMap[section]; ok {
-		if value, ok := sectionSettings[key]; ok {
-			return value
-		}
-	}
-	return nil
-}
-
-// SetSetting updates a setting value in the settings map and saves to config
-func SetSetting(section, key string, value interface{}) error {
-	if sectionSettings, ok := SettingsMap[section]; ok {
-		if _, ok := sectionSettings[key]; ok {
-			// Update the settings map
-			sectionSettings[key] = value
-
-			// Update the config struct using reflection
-			configValue := reflect.ValueOf(&Config).Elem()
-			fieldName := strings.ReplaceAll(key, " ", "")
-			field := configValue.FieldByName(fieldName)
-			if field.IsValid() && field.CanSet() {
-				// Convert the value to the correct type
-				fieldType := field.Type()
-				valueType := reflect.TypeOf(value)
-
-				if fieldType != valueType {
-					// Handle type conversion
-					switch fieldType.Kind() {
-					case reflect.Bool:
-						field.SetBool(value.(bool))
-					case reflect.Float64:
-						field.SetFloat(value.(float64))
-					case reflect.String:
-						field.SetString(value.(string))
-					default:
-						return fmt.Errorf("unsupported field type: %v", fieldType)
-					}
-				} else {
-					field.Set(reflect.ValueOf(value))
-				}
-			}
-
-			// Save the updated config
-			configPath := fmt.Sprintf("%s/config.json", Config.DataDir)
-			return saveConfig(configPath)
-		}
-		return fmt.Errorf("setting '%s' not found in section '%s'", key, section)
-	}
-	return fmt.Errorf("section '%s' not found", section)
 }
 
 // GetStripeKey returns the Stripe secret key from config or environment
@@ -608,10 +482,7 @@ func GetStripeKey() string {
 	}
 
 	// Then try config
-	if key := GetSetting("stripe", "Stripe Secret Key"); key != nil {
-		return key.(string)
-	}
-	return ""
+	return Config.StripeSecretKey
 }
 
 // GetStripePublicKey returns the Stripe publishable key
@@ -640,10 +511,7 @@ func GetStripeWebhookSecret() string {
 	}
 
 	// Then try config
-	if secret := GetSetting("stripe", "Stripe Webhook Secret"); secret != nil {
-		return secret.(string)
-	}
-	return ""
+	return Config.StripeWebhookSecret
 }
 
 // SetTippingLocationOverride sets a location-specific tipping override
@@ -682,10 +550,10 @@ func GetTippingEnabledForLocation(locationID string) bool {
 
 // GetTippingConfig returns tipping configuration
 func GetTippingConfig(locationID string) (bool, float64, float64, bool) {
-	tippingEnabled := GetSetting("tipping", "Tipping Enabled").(bool)
-	minAmount := GetSetting("tipping", "Min Amount").(float64)
-	maxAmount := GetSetting("tipping", "Max Amount").(float64)
-	allowCustom := GetSetting("tipping", "Allow Custom Amounts").(bool)
+	tippingEnabled := Config.TippingEnabled
+	minAmount := Config.TippingMinAmount
+	maxAmount := Config.TippingMaxAmount
+	allowCustom := Config.TippingAllowCustomAmount
 
 	// Check location override
 	if locationOverride, exists := Config.TippingLocationOverrides[locationID]; exists {
@@ -693,4 +561,93 @@ func GetTippingConfig(locationID string) (bool, float64, float64, bool) {
 	}
 
 	return tippingEnabled, minAmount, maxAmount, allowCustom
+}
+
+// GetConfigFields returns config fields with their metadata for template generation
+func GetConfigFields() map[string][]map[string]interface{} {
+	return map[string][]map[string]interface{}{
+		"stripe": {
+			{"name": "StripeSecretKey", "label": "Stripe Secret Key", "type": "password", "id": "stripe-secret-key", "value": Config.StripeSecretKey},
+			{"name": "StripePublicKey", "label": "Stripe Public Key", "type": "text", "id": "stripe-public-key", "value": Config.StripePublicKey},
+			{"name": "StripeWebhookSecret", "label": "Stripe Webhook Secret", "type": "password", "id": "stripe-webhook-secret", "value": Config.StripeWebhookSecret},
+			{"name": "StripeTerminalLocationID", "label": "Terminal Location", "type": "text", "id": "stripe-terminal-location", "value": Config.StripeTerminalLocationID},
+		},
+		"business": {
+			{"name": "BusinessName", "label": "Business Name", "type": "text", "id": "business-name", "value": Config.BusinessName},
+			{"name": "BusinessStreet", "label": "Street Address", "type": "text", "id": "business-street", "value": Config.BusinessStreet},
+			{"name": "BusinessCity", "label": "City", "type": "text", "id": "business-city", "value": Config.BusinessCity},
+			{"name": "BusinessState", "label": "State", "type": "text", "id": "business-state", "value": Config.BusinessState},
+			{"name": "BusinessZIP", "label": "ZIP Code", "type": "text", "id": "business-zip", "value": Config.BusinessZIP},
+		},
+		"tax": {
+			{"name": "BusinessTaxID", "label": "Business Tax ID", "type": "text", "id": "business-tax-id", "value": Config.BusinessTaxID},
+			{"name": "SalesTaxNumber", "label": "Sales Tax Number", "type": "text", "id": "sales-tax-number", "value": Config.SalesTaxNumber},
+			{"name": "VATNumber", "label": "VAT Number", "type": "text", "id": "vat-number", "value": Config.VATNumber},
+			{"name": "DefaultTaxRate", "label": "Default Tax Rate", "type": "number", "id": "default-tax-rate", "value": Config.DefaultTaxRate * 100, "step": "0.0001", "min": "0", "max": "100"},
+		},
+		"system": {
+			{"name": "ServerAddress", "label": "Server Address", "type": "text", "id": "server-address", "value": Config.ServerAddress},
+			{"name": "Port", "label": "Port", "type": "text", "id": "port", "value": Config.Port},
+			{"name": "DataDir", "label": "Data Directory", "type": "text", "id": "data-dir", "value": Config.DataDir},
+			{"name": "TransactionsDir", "label": "Transactions Dir", "type": "text", "id": "transactions-dir", "value": Config.TransactionsDir},
+			{"name": "WebsiteName", "label": "Website Name", "type": "text", "id": "website-name", "value": Config.WebsiteName},
+		},
+		"tipping": {
+			{"name": "TippingEnabled", "label": "Tipping Enabled", "type": "checkbox", "id": "tipping-enabled", "value": Config.TippingEnabled},
+			{"name": "TippingMinAmount", "label": "Min Amount", "type": "number", "id": "tipping-min-amount", "value": Config.TippingMinAmount, "step": "0.01", "min": "0"},
+			{"name": "TippingMaxAmount", "label": "Max Amount", "type": "number", "id": "tipping-max-amount", "value": Config.TippingMaxAmount, "step": "0.01", "min": "0"},
+			{"name": "TippingAllowCustomAmount", "label": "Allow Custom Amounts", "type": "checkbox", "id": "tipping-allow-custom", "value": Config.TippingAllowCustomAmount},
+		},
+		"sms": {
+			{"name": "AWSAccessKeyID", "label": "AWS Access Key", "type": "text", "id": "aws-access-key", "value": Config.AWSAccessKeyID},
+			{"name": "AWSSecretAccessKey", "label": "AWS Secret Access Key", "type": "password", "id": "aws-secret-key", "value": Config.AWSSecretAccessKey},
+			{"name": "AWSRegion", "label": "AWS Region", "type": "text", "id": "aws-region", "value": Config.AWSRegion},
+		},
+	}
+}
+
+// UpdateConfigField updates a config field by name using reflection
+func UpdateConfigField(fieldName string, value interface{}) error {
+	configValue := reflect.ValueOf(&Config).Elem()
+	field := configValue.FieldByName(fieldName)
+
+	if !field.IsValid() {
+		return fmt.Errorf("field %s not found", fieldName)
+	}
+	if !field.CanSet() {
+		return fmt.Errorf("field %s cannot be set", fieldName)
+	}
+
+	// Convert value to appropriate type
+	switch field.Kind() {
+	case reflect.String:
+		if str, ok := value.(string); ok {
+			field.SetString(str)
+		} else {
+			field.SetString(fmt.Sprintf("%v", value))
+		}
+	case reflect.Float64:
+		if str, ok := value.(string); ok {
+			if floatVal, err := strconv.ParseFloat(str, 64); err == nil {
+				// Handle percentage conversion for DefaultTaxRate
+				if fieldName == "DefaultTaxRate" {
+					floatVal = floatVal / 100.0 // Convert percentage to decimal
+				}
+				field.SetFloat(floatVal)
+			} else {
+				return fmt.Errorf("cannot convert %s to float64", str)
+			}
+		}
+	case reflect.Bool:
+		if str, ok := value.(string); ok {
+			boolVal := str == "true" || str == "on" || str == "1"
+			field.SetBool(boolVal)
+		}
+	default:
+		return fmt.Errorf("unsupported field type: %s", field.Kind())
+	}
+
+	// Save config
+	configPath := filepath.Join(Config.DataDir, "config.json")
+	return saveConfig(configPath)
 }

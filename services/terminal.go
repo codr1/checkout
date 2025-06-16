@@ -68,28 +68,12 @@ func ShouldEnableTipping(transactionAmount float64, cart []templates.Service, lo
 	return true
 }
 
-// GetTippingConfig returns the tipping configuration for a location
-func GetTippingConfig(locationID string) (bool, float64, float64, bool) {
-	// Get tipping settings from the map
-	tippingEnabled := config.GetSetting("tipping", "Tipping Enabled").(bool)
-	minAmount := config.GetSetting("tipping", "Min Amount").(float64)
-	maxAmount := config.GetSetting("tipping", "Max Amount").(float64)
-	allowCustom := config.GetSetting("tipping", "Allow Custom Amounts").(bool)
-
-	// Check location override
-	if locationOverride, exists := config.Config.TippingLocationOverrides[locationID]; exists {
-		tippingEnabled = locationOverride
-	}
-
-	return tippingEnabled, minAmount, maxAmount, allowCustom
-}
-
 // LoadStripeLocationsAndSelect fetches Stripe Terminal Locations and selects one based on config.
 // This function is expected to be called during application initialization.
 // It will log.Fatal if a configured location is not found, or if no location is configured
 // and zero or multiple locations exist.
 func LoadStripeLocationsAndSelect() {
-	utils.Info("terminal", "Fetching Stripe Terminal Locations")
+	utils.Debug("terminal", "Fetching Stripe Terminal Locations")
 	params := &stripe.TerminalLocationListParams{}
 	params.Filters.AddFilter("limit", "", "100") // Adjust limit as needed
 
@@ -108,7 +92,7 @@ func LoadStripeLocationsAndSelect() {
 	}
 
 	AppState.AvailableStripeLocations = allLocations
-	utils.Info("terminal", "Found Stripe Terminal Locations", "count", len(allLocations))
+	utils.Debug("terminal", "Found Stripe Terminal Locations", "count", len(allLocations))
 	for _, loc := range allLocations {
 		utils.Debug("terminal", "Available location", "name", loc.DisplayName, "id", loc.ID, "livemode", loc.Livemode)
 	}
@@ -161,7 +145,7 @@ func LoadStripeReadersForLocation(locationID string) {
 		utils.Debug("terminal", "No location selected, skipping reader loading")
 		return
 	}
-	utils.Info("terminal", "Fetching readers for location", "name", AppState.SelectedStripeLocation.DisplayName, "id", locationID)
+	utils.Debug("terminal", "Fetching readers for location", "name", AppState.SelectedStripeLocation.DisplayName, "id", locationID)
 
 	params := &stripe.TerminalReaderListParams{}
 	params.Location = stripe.String(locationID)

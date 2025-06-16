@@ -64,12 +64,6 @@ templ PaymentSSEContainer(sseConfig PaymentSSEConfig) {
 		hx-swap="innerHTML"
 		hx-trigger={ fmt.Sprintf("load delay:%ds", config.GetFailsafeTimeoutSeconds()) }>
 	</div>
-	
-	<style>
-		.hidden-action-trigger {
-			display: none;
-		}
-	</style>
 }
 
 // PaymentStatusArea creates the standardized status display with progress
@@ -93,12 +87,12 @@ templ PaymentStatusArea(paymentType, paymentID, additionalInfo string) {
 
 // PaymentInfo displays payment amount and customer email consistently
 templ PaymentInfo(totalAmount float64, customerEmail string) {
-	<div class="payment-info">
-		<p class="payment-amount">
+	<div>
+		<p>
 			Total Amount: <strong>${ fmt.Sprintf("%.2f", totalAmount) }</strong>
 		</p>
 		if customerEmail != "" {
-			<p class="customer-email">
+			<p>
 				Receipt will be sent to: <strong>{ customerEmail }</strong>
 			</p>
 		}
@@ -134,11 +128,11 @@ templ SimpleProgressDisplay(paymentType string, secondsRemaining int, progressWi
 
 // QRPaymentContainer - Payment container for QR code payments
 templ QRPaymentContainer(qrBase64 string, paymentLinkID string, totalAmount float64, customerEmail string) {
-	<div class="payment-container qr-payment" id="qr-payment-container">
+	<div id="qr-payment-container">
 		<h3>QR Code Payment</h3>
-		<div class="qr-code-display">
-			<img src={ "data:image/png;base64," + qrBase64 } alt="Payment QR Code" class="qr-code-image"/>
-			<p class="qr-instructions">
+		<div>
+			<img src={ "data:image/png;base64," + qrBase64 } alt="Payment QR Code"/>
+			<p>
 				Scan this QR code with your camera app to pay securely.
 			</p>
 			@PaymentInfo(totalAmount, customerEmail)
@@ -174,7 +168,7 @@ templ QRPaymentContainer(qrBase64 string, paymentLinkID string, totalAmount floa
 
 // TerminalPaymentContainer - payment container for terminal payments
 templ TerminalPaymentContainer(paymentIntentID string, readerID string, totalAmount float64, customerEmail string) {
-	<div class="payment-container terminal-payment" id="terminal-payment-container">
+	<div id="terminal-payment-container">
 		<h3>Terminal Payment</h3>
 		<p>Please complete the transaction on the payment terminal.</p>
 		@PaymentInfo(totalAmount, customerEmail)

@@ -9,51 +9,62 @@ import (
 templ Page(availableReaders []templates.StripeReader, selectedReaderID string) {
 	@templates.Layout("POS System") {
 		<div class="top-bar-controls">
-			if len(availableReaders) > 0 {
-				<form class="reader-select-form" hx-post="/set-selected-reader" hx-trigger="change" hx-swap="none">
-					<label for="reader_id_select">Terminal:</label>
-					<select name="reader_id" id="reader_id_select">
-						for _, reader := range availableReaders {
-							<option value={ reader.ID } selected?={ reader.ID == selectedReaderID }>
-								if reader.Label != "" {
-									if reader.Status != "online" {
-										{ fmt.Sprintf("%s (%s)", reader.Label, reader.Status) }
-									} else {
-										{ reader.Label }
-									}
-								} else {
-									if reader.Status != "online" {
-										{ fmt.Sprintf("%s (%s)", reader.ID, reader.Status) }
-									} else {
-										{ reader.ID }
-									}
-								}
-							</option>
-						}
-					</select>
-					// Adding a submit button for accessibility/fallback, though hx-trigger="change" handles it.
-					// This button can be hidden with CSS if desired.
-					<button type="submit" style="display:none;">Set Reader</button>
-				</form>
-			} else {
-				<span class="no-readers-available">No terminal readers configured.</span>
-			}
-				
+			<div class="left-controls">
 				<div class="actions-menu">
 					<button class="actions-menu-btn" onclick="toggleActionsMenu()">
-						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-							<circle cx="12" cy="12" r="3"></circle>
-							<path d="m12 1 0 6m0 6 0 6"></path>
-							<path d="m17.5 6.5-3 3m-6 0-3-3"></path>
-							<path d="m17.5 17.5-3-3m-6 0-3 3"></path>
+						<svg width="16" height="16" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+							<circle cx="12" cy="12" r="2" fill="currentColor"></circle>
+							<circle cx="12" cy="4" r="2" fill="currentColor"></circle>
+							<circle cx="12" cy="20" r="2" fill="currentColor"></circle>
 						</svg>
 					</button>
 					<div class="actions-dropdown" id="actionsDropdown">
-						<div class="dropdown-item" hx-post="/clear-terminal-transaction" hx-swap="none" hx-confirm="Are you sure you want to clear the current terminal transaction? This will cancel any pending payment.">
+						<div class="dropdown-item" 
+							 hx-post="/clear-terminal-transaction" 
+							 hx-swap="none" 
+							 hx-confirm="Are you sure you want to clear the current terminal transaction? This will cancel any pending payment."
+							 hx-on:click="document.getElementById('actionsDropdown').classList.remove('show')">
 							Clear Transaction
+						</div>
+						<div class="dropdown-item" 
+							 hx-get="/settings" 
+							 hx-target="#modal-content"
+							 hx-on:click="document.getElementById('actionsDropdown').classList.remove('show')">
+							Settings
 						</div>
 					</div>
 				</div>
+				
+				if len(availableReaders) > 0 {
+					<form class="reader-select-form" hx-post="/set-selected-reader" hx-trigger="change" hx-swap="none">
+						<label for="reader_id_select">Terminal:</label>
+						<select name="reader_id" id="reader_id_select">
+							for _, reader := range availableReaders {
+								<option value={ reader.ID } selected?={ reader.ID == selectedReaderID }>
+									if reader.Label != "" {
+										if reader.Status != "online" {
+											{ fmt.Sprintf("%s (%s)", reader.Label, reader.Status) }
+										} else {
+											{ reader.Label }
+										}
+									} else {
+										if reader.Status != "online" {
+											{ fmt.Sprintf("%s (%s)", reader.ID, reader.Status) }
+										} else {
+											{ reader.ID }
+										}
+									}
+								</option>
+							}
+						</select>
+						// Adding a submit button for accessibility/fallback, though hx-trigger="change" handles it.
+						// This button can be hidden with CSS if desired.
+						<button type="submit" style="display:none;">Set Reader</button>
+					</form>
+				} else {
+					<span class="no-readers-available">No terminal readers configured.</span>
+				}
+			</div>
 				
 			<button class="logout-btn" hx-post="/logout" hx-push-url="true">Logout</button>
 		</div>
@@ -88,15 +99,13 @@ templ Page(availableReaders []templates.StripeReader, selectedReaderID string) {
 				
 				<div hx-get="/checkout-form" hx-trigger="load"></div>
 				
-				<div class="cancel-transaction-section">
-					<button 
-						class="cancel-transaction-btn" 
-						hx-post="/cancel-transaction" 
-						hx-swap="none" 
-						hx-confirm="Are you sure you want to cancel this transaction? This will clear your cart.">
-						Cancel Transaction
-					</button>
-				</div>
+				<button 
+					class="cancel-transaction-btn" 
+					hx-post="/cancel-transaction" 
+					hx-swap="none" 
+					hx-confirm="Are you sure you want to cancel this transaction? This will clear your cart.">
+					Cancel Transaction
+				</button>
 			</div>
 		</div>
 	}

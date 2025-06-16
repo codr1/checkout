@@ -2,369 +2,252 @@ package settings
 
 import (
 	"fmt"
+	"strings"
 	"checkout/config"
 )
 
-// SettingsPage represents the main settings page
+// SettingsPage represents the settings modal content
 templ SettingsPage() {
-	<div class="settings-page">
-		<div class="settings-header">
-			<h1>Settings</h1>
+	<div class="settings-modal-container">
+		<!-- Fixed Header -->
+		<div class="settings-modal-header">
+			<div class="settings-header-content">
+				<h3>Settings</h3>
+				<button type="button" class="modal-close-btn" hx-post="/close-modal" hx-swap="none">
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<line x1="18" y1="6" x2="6" y2="18"></line>
+						<line x1="6" y1="6" x2="18" y2="18"></line>
+					</svg>
+				</button>
+			</div>
 			<div class="search-container">
-				<input 
-					type="text" 
-					id="settings-search" 
-					placeholder="Search settings..." 
-					hx-get="/settings/search"
-					hx-trigger="keyup changed delay:500ms"
-					hx-target="#settings-content"
-					hx-indicator="#search-indicator"
-				/>
-				<div id="search-indicator" class="htmx-indicator">
-					<div class="spinner"></div>
-				</div>
+				<form hx-get="/api/settings/search" hx-target="#settings-content" hx-trigger="submit, keyup delay:500ms from:input">
+					<div class="search-input-wrapper">
+						<svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+							<circle cx="11" cy="11" r="8"></circle>
+							<path d="m21 21-4.35-4.35"></path>
+						</svg>
+						<input 
+							type="text" 
+							id="settings-search" 
+							name="q"
+							placeholder="Search settings..." 
+						/>
+						<button type="button" class="clear-search" onclick="clearSearch()" style="display: none;">
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+								<line x1="18" y1="6" x2="6" y2="18"></line>
+								<line x1="6" y1="6" x2="18" y2="18"></line>
+							</svg>
+						</button>
+					</div>
+				</form>
 			</div>
 		</div>
 
-		<div id="settings-content" class="settings-content">
+		<!-- Scrollable Content -->
+		<div class="settings-modal-body" id="settings-content">
 			@SettingsSections()
 		</div>
+
+		<!-- Fixed Footer -->
+		<div class="settings-modal-footer">
+			<button type="button" class="cancel-btn" hx-post="/close-modal" hx-swap="none">Close</button>
+		</div>
 	</div>
+
+	<script>
+		function clearSearch() {
+			const searchInput = document.getElementById('settings-search');
+			const clearButton = document.querySelector('.clear-search');
+			searchInput.value = '';
+			clearButton.style.display = 'none';
+			// Trigger HTMX to show all settings
+			htmx.trigger(searchInput, 'keyup');
+		}
+
+		// Show/hide clear button based on input content
+		document.addEventListener('DOMContentLoaded', function() {
+			const searchInput = document.getElementById('settings-search');
+			if (searchInput) {
+				searchInput.addEventListener('input', function(e) {
+					const clearButton = document.querySelector('.clear-search');
+					if (e.target.value.length > 0) {
+						clearButton.style.display = 'flex';
+					} else {
+						clearButton.style.display = 'none';
+					}
+				});
+			}
+		});
+	</script>
 }
 
 // SettingsSections renders all settings sections
 templ SettingsSections() {
 	<div class="settings-sections">
-		@StripeSection()
-		@BusinessSection()
-		@TaxSection()
-		@SystemSection()
-		@TippingSection()
-		@SMSSection()
+		for sectionName, sectionTitle := range getSectionTitles() {
+			@SettingsSection(sectionName, sectionTitle)
+		}
 	</div>
 }
 
-// StripeSection renders Stripe-related settings
-templ StripeSection() {
-	<div class="settings-section" data-section="stripe">
-		<h2>Stripe Configuration</h2>
+// FilteredSettingsSections renders settings sections filtered by search query
+templ FilteredSettingsSections(query string) {
+	<div class="settings-sections">
+		for sectionName, sectionTitle := range getSectionTitles() {
+			@FilteredSettingsSection(sectionName, sectionTitle, query)
+		}
+	</div>
+}
+
+// SettingsSection renders a single settings section
+templ SettingsSection(sectionName, sectionTitle string) {
+	<div class="settings-section" data-section={ sectionName }>
+		<h2>{ sectionTitle }</h2>
 		<div class="settings-grid">
-			<div class="setting-item">
-				<label for="stripe-secret-key">Stripe Secret Key</label>
-				<input 
-					type="password" 
-					id="stripe-secret-key" 
-					name="stripeSecretKey" 
-					value={ config.Config.StripeSecretKey }
-					hx-put="/settings/update"
-					hx-trigger="change"
-				/>
-			</div>
-			<div class="setting-item">
-				<label for="stripe-public-key">Stripe Public Key</label>
-				<input 
-					type="text" 
-					id="stripe-public-key" 
-					name="stripePublicKey" 
-					value={ config.Config.StripePublicKey }
-					hx-put="/settings/update"
-					hx-trigger="change"
-				/>
-			</div>
-			<div class="setting-item">
-				<label for="stripe-webhook-secret">Stripe Webhook Secret</label>
-				<input 
-					type="password" 
-					id="stripe-webhook-secret" 
-					name="stripeWebhookSecret" 
-					value={ config.Config.StripeWebhookSecret }
-					hx-put="/settings/update"
-					hx-trigger="change"
-				/>
-			</div>
-			<div class="setting-item">
-				<label for="stripe-terminal-location">Stripe Terminal Location</label>
-				<input 
-					type="text" 
-					id="stripe-terminal-location" 
-					name="stripeTerminalLocationID" 
-					value={ config.Config.StripeTerminalLocationID }
-					hx-put="/settings/update"
-					hx-trigger="change"
-				/>
-			</div>
+			for _, field := range config.GetConfigFields()[sectionName] {
+				@SettingField(field)
+			}
 		</div>
 	</div>
 }
 
-// BusinessSection renders business-related settings
-templ BusinessSection() {
-	<div class="settings-section" data-section="business">
-		<h2>Business Information</h2>
-		<div class="settings-grid">
-			<div class="setting-item">
-				<label for="business-name">Business Name</label>
-				<input 
-					type="text" 
-					id="business-name" 
-					name="businessName" 
-					value={ config.Config.BusinessName }
-					hx-put="/settings/update"
-					hx-trigger="change"
-				/>
-			</div>
-			<div class="setting-item">
-				<label for="business-street">Street Address</label>
-				<input 
-					type="text" 
-					id="business-street" 
-					name="businessStreet" 
-					value={ config.Config.BusinessStreet }
-					hx-put="/settings/update"
-					hx-trigger="change"
-				/>
-			</div>
-			<div class="setting-item">
-				<label for="business-city">City</label>
-				<input 
-					type="text" 
-					id="business-city" 
-					name="businessCity" 
-					value={ config.Config.BusinessCity }
-					hx-put="/settings/update"
-					hx-trigger="change"
-				/>
-			</div>
-			<div class="setting-item">
-				<label for="business-state">State</label>
-				<input 
-					type="text" 
-					id="business-state" 
-					name="businessState" 
-					value={ config.Config.BusinessState }
-					hx-put="/settings/update"
-					hx-trigger="change"
-				/>
-			</div>
-			<div class="setting-item">
-				<label for="business-zip">ZIP Code</label>
-				<input 
-					type="text" 
-					id="business-zip" 
-					name="businessZIP" 
-					value={ config.Config.BusinessZIP }
-					hx-put="/settings/update"
-					hx-trigger="change"
-				/>
+// FilteredSettingsSection renders a settings section with fields filtered by search query
+templ FilteredSettingsSection(sectionName, sectionTitle, query string) {
+	if hasMatchingFields(sectionName, sectionTitle, query) {
+		<div class="settings-section" data-section={ sectionName }>
+			<h2>{ sectionTitle }</h2>
+			<div class="settings-grid">
+				for _, field := range config.GetConfigFields()[sectionName] {
+					if fieldMatchesQuery(field, query) {
+						@SettingField(field)
+					}
+				}
 			</div>
 		</div>
-	</div>
+	}
 }
 
-// TaxSection renders tax-related settings
-templ TaxSection() {
-	<div class="settings-section" data-section="tax">
-		<h2>Tax Configuration</h2>
-		<div class="settings-grid">
-			<div class="setting-item">
-				<label for="business-tax-id">Business Tax ID (EIN)</label>
+// SettingField renders a single setting field
+templ SettingField(field map[string]interface{}) {
+	<div class="setting-item">
+		<label for={ getString(field["id"]) }>{ getString(field["label"]) }</label>
+		<input type="hidden" name="name" value={ getString(field["name"]) } />
+		
+		switch getString(field["type"]) {
+			case "password":
 				<input 
-					type="text" 
-					id="business-tax-id" 
-					name="businessTaxID" 
-					value={ config.Config.BusinessTaxID }
-					hx-put="/settings/update"
+					type="password" 
+					id={ getString(field["id"]) }
+					name="value"
+					value={ getString(field["value"]) }
+					hx-put="/api/settings/update"
 					hx-trigger="change"
+					hx-include="previous input[type=hidden]"
 				/>
-			</div>
-			<div class="setting-item">
-				<label for="sales-tax-number">Sales Tax Number</label>
-				<input 
-					type="text" 
-					id="sales-tax-number" 
-					name="salesTaxNumber" 
-					value={ config.Config.SalesTaxNumber }
-					hx-put="/settings/update"
-					hx-trigger="change"
-				/>
-			</div>
-			<div class="setting-item">
-				<label for="vat-number">VAT Number</label>
-				<input 
-					type="text" 
-					id="vat-number" 
-					name="vatNumber" 
-					value={ config.Config.VATNumber }
-					hx-put="/settings/update"
-					hx-trigger="change"
-				/>
-			</div>
-			<div class="setting-item">
-				<label for="default-tax-rate">Default Tax Rate (%)</label>
+			case "number":
 				<input 
 					type="number" 
-					id="default-tax-rate" 
-					name="defaultTaxRate" 
-					value={ fmt.Sprintf("%.4f", config.Config.DefaultTaxRate * 100) }
-					step="0.0001"
-					min="0"
-					max="100"
-					hx-put="/settings/update"
+					id={ getString(field["id"]) }
+					name="value"
+					value={ getString(field["value"]) }
+					if getString(field["step"]) != "" {
+						step={ getString(field["step"]) }
+					}
+					if getString(field["min"]) != "" {
+						min={ getString(field["min"]) }
+					}
+					if getString(field["max"]) != "" {
+						max={ getString(field["max"]) }
+					}
+					hx-put="/api/settings/update"
 					hx-trigger="change"
+					hx-include="previous input[type=hidden]"
 				/>
-			</div>
-		</div>
-	</div>
-}
-
-// SystemSection renders system-related settings
-templ SystemSection() {
-	<div class="settings-section" data-section="system">
-		<h2>System Configuration</h2>
-		<div class="settings-grid">
-			<div class="setting-item">
-				<label for="port">Port</label>
-				<input 
-					type="text" 
-					id="port" 
-					name="port" 
-					value={ config.Config.Port }
-					hx-put="/settings/update"
-					hx-trigger="change"
-				/>
-			</div>
-			<div class="setting-item">
-				<label for="data-dir">Data Directory</label>
-				<input 
-					type="text" 
-					id="data-dir" 
-					name="dataDir" 
-					value={ config.Config.DataDir }
-					hx-put="/settings/update"
-					hx-trigger="change"
-				/>
-			</div>
-			<div class="setting-item">
-				<label for="transactions-dir">Transactions Directory</label>
-				<input 
-					type="text" 
-					id="transactions-dir" 
-					name="transactionsDir" 
-					value={ config.Config.TransactionsDir }
-					hx-put="/settings/update"
-					hx-trigger="change"
-				/>
-			</div>
-			<div class="setting-item">
-				<label for="website-name">Website Name</label>
-				<input 
-					type="text" 
-					id="website-name" 
-					name="websiteName" 
-					value={ config.Config.WebsiteName }
-					hx-put="/settings/update"
-					hx-trigger="change"
-				/>
-			</div>
-		</div>
-	</div>
-}
-
-// TippingSection renders tipping-related settings
-templ TippingSection() {
-	<div class="settings-section" data-section="tipping">
-		<h2>Tipping Configuration</h2>
-		<div class="settings-grid">
-			<div class="setting-item">
-				<label for="tipping-enabled">Enable Tipping</label>
+			case "checkbox":
 				<input 
 					type="checkbox" 
-					id="tipping-enabled" 
-					name="tippingEnabled" 
-					checked={ config.Config.TippingEnabled }
-					hx-put="/settings/update"
+					id={ getString(field["id"]) }
+					name="value"
+					if getBool(field["value"]) {
+						checked
+					}
+					hx-put="/api/settings/update"
 					hx-trigger="change"
+					hx-include="previous input[type=hidden]"
 				/>
-			</div>
-			<div class="setting-item">
-				<label for="tipping-min-amount">Minimum Amount for Tipping ($)</label>
+			default:
 				<input 
-					type="number" 
-					id="tipping-min-amount" 
-					name="tippingMinAmount" 
-					value={ fmt.Sprintf("%.2f", config.Config.TippingMinAmount) }
-					step="0.01"
-					min="0"
-					hx-put="/settings/update"
+					type="text" 
+					id={ getString(field["id"]) }
+					name="value"
+					value={ getString(field["value"]) }
+					hx-put="/api/settings/update"
 					hx-trigger="change"
+					hx-include="previous input[type=hidden]"
 				/>
-			</div>
-			<div class="setting-item">
-				<label for="tipping-max-amount">Maximum Amount for Tipping ($)</label>
-				<input 
-					type="number" 
-					id="tipping-max-amount" 
-					name="tippingMaxAmount" 
-					value={ fmt.Sprintf("%.2f", config.Config.TippingMaxAmount) }
-					step="0.01"
-					min="0"
-					hx-put="/settings/update"
-					hx-trigger="change"
-				/>
-			</div>
-			<div class="setting-item">
-				<label for="tipping-allow-custom">Allow Custom Tip Amounts</label>
-				<input 
-					type="checkbox" 
-					id="tipping-allow-custom" 
-					name="tippingAllowCustomAmount" 
-					checked={ config.Config.TippingAllowCustomAmount }
-					hx-put="/settings/update"
-					hx-trigger="change"
-				/>
-			</div>
-		</div>
+		}
 	</div>
 }
 
-// SMSSection renders SMS-related settings
-templ SMSSection() {
-	<div class="settings-section" data-section="sms">
-		<h2>SMS Configuration (AWS SNS)</h2>
-		<div class="settings-grid">
-			<div class="setting-item">
-				<label for="aws-access-key">AWS Access Key ID</label>
-				<input 
-					type="password" 
-					id="aws-access-key" 
-					name="awsAccessKeyId" 
-					value={ config.Config.AWSAccessKeyID }
-					hx-put="/settings/update"
-					hx-trigger="change"
-				/>
-			</div>
-			<div class="setting-item">
-				<label for="aws-secret-key">AWS Secret Access Key</label>
-				<input 
-					type="password" 
-					id="aws-secret-key" 
-					name="awsSecretAccessKey" 
-					value={ config.Config.AWSSecretAccessKey }
-					hx-put="/settings/update"
-					hx-trigger="change"
-				/>
-			</div>
-			<div class="setting-item">
-				<label for="aws-region">AWS Region</label>
-				<input 
-					type="text" 
-					id="aws-region" 
-					name="awsRegion" 
-					value={ config.Config.AWSRegion }
-					hx-put="/settings/update"
-					hx-trigger="change"
-				/>
-			</div>
-		</div>
-	</div>
+// Helper functions
+func getSectionTitles() map[string]string {
+	return map[string]string{
+		"stripe":   "Stripe Configuration",
+		"business": "Business Information",
+		"tax":      "Tax Configuration",
+		"system":   "System Configuration",
+		"tipping":  "Tipping Configuration",
+		"sms":      "SMS Configuration",
+	}
+}
+
+func getString(value interface{}) string {
+	if value == nil {
+		return ""
+	}
+	return fmt.Sprintf("%v", value)
+}
+
+func getBool(value interface{}) bool {
+	if b, ok := value.(bool); ok {
+		return b
+	}
+	return false
+}
+
+// hasMatchingFields checks if a section has any fields matching the search query
+func hasMatchingFields(sectionName, sectionTitle, query string) bool {
+	// Check if section title matches
+	if strings.Contains(strings.ToLower(sectionTitle), query) {
+		return true
+	}
+	
+	// Check if any field in the section matches
+	for _, field := range config.GetConfigFields()[sectionName] {
+		if fieldMatchesQuery(field, query) {
+			return true
+		}
+	}
+	return false
+}
+
+// fieldMatchesQuery checks if a field matches the search query
+func fieldMatchesQuery(field map[string]interface{}, query string) bool {
+	// Check field label
+	if label := getString(field["label"]); strings.Contains(strings.ToLower(label), query) {
+		return true
+	}
+	
+	// Check field name
+	if name := getString(field["name"]); strings.Contains(strings.ToLower(name), query) {
+		return true
+	}
+	
+	// Check field value (convert to string)
+	if value := getString(field["value"]); strings.Contains(strings.ToLower(value), query) {
+		return true
+	}
+	
+	return false
 } 

@@ -2,7 +2,7 @@ package checkout
 
 // Payment Success Component
 templ PaymentSuccess(confirmationCode string, hasContactInfo bool) {
-	<div class="payment-success" id="payment-container">
+	<div id="payment-container">
 		<h3>Payment Successful! ✅</h3>
 		<p>Your payment has been processed successfully.</p>
 		<p>Confirmation Code: { confirmationCode }</p>
@@ -59,7 +59,7 @@ templ ReceiptForm(confirmationCode string) {
 
 // Payment Expired Component
 templ PaymentExpired(expirationCode string) {
-	<div class="payment-expired">
+	<div>
 		<h3>Payment Link Expired ⌛</h3>
 		<p>The payment link has expired and has been cancelled.</p>
 		<p>Expiration Code: { expirationCode }</p>
@@ -75,7 +75,7 @@ templ PaymentExpired(expirationCode string) {
 		</button>
 		<button
 			type="button"
-			class="retry-btn"
+			class="checkout-btn"
 			hx-get="/generate-qr-code"
 			hx-target="#modal-content"
 			hx-swap="innerHTML"
@@ -87,7 +87,7 @@ templ PaymentExpired(expirationCode string) {
 
 // Payment Cancelled Component
 templ PaymentCancelled(cancellationCode string) {
-	<div class="payment-cancelled">
+	<div>
 		<h3>Payment Link Cancelled</h3>
 		<p>The payment link has been cancelled.</p>
 		<p>Cancellation Code: { cancellationCode }</p>
@@ -103,7 +103,7 @@ templ PaymentCancelled(cancellationCode string) {
 		</button>
 		<button 
 			type="button" 
-			class="retry-btn" 
+			class="checkout-btn" 
 			hx-get="/generate-qr-code" 
 			hx-target="#modal-content" 
 			hx-swap="innerHTML"

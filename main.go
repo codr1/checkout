@@ -290,11 +290,17 @@ func main() {
 		port = PORT
 	}
 
+	// Get server address from config or default to 0.0.0.0
+	serverAddress := config.Config.ServerAddress
+	if serverAddress == "" {
+		serverAddress = "0.0.0.0"
+	}
+
 	// Determine protocol and start appropriate server
 	if shouldUseHTTPS() {
 		utils.Info("server", "Starting HTTPS server for local testing", "port", port, "website", config.Config.WebsiteName)
 		utils.Info("server", "⚠️  You will need to accept the security warning in your browser for the self-signed certificate")
-		utils.Info("server", "🔗 Access your application", "url", "https://localhost:"+port)
+		utils.Info("server", "🔗 Access your application", "url", "https://"+serverAddress+":"+port)
 
 		// Generate self-signed certificate
 		cert, err := generateSelfSignedCert()
@@ -304,7 +310,7 @@ func main() {
 
 		// Create HTTPS server
 		server := &http.Server{
-			Addr:    ":" + port,
+			Addr:    serverAddress + ":" + port,
 			Handler: rootMux,
 			TLSConfig: &tls.Config{
 				Certificates: []tls.Certificate{cert},
@@ -315,8 +321,8 @@ func main() {
 	} else {
 		utils.Info("server", "Starting HTTP server for cloudflared", "port", port, "website", config.Config.WebsiteName)
 		utils.Info("server", "🔗 Expected to be accessed via cloudflared tunnel or reverse proxy")
-		utils.Info("server", "🔗 Local HTTP access", "url", "http://localhost:"+port)
+		utils.Info("server", "🔗 Local HTTP access", "url", "http://"+serverAddress+":"+port)
 
-		log.Fatal(http.ListenAndServe(":"+port, rootMux))
+		log.Fatal(http.ListenAndServe(serverAddress+":"+port, rootMux))
 	}
 }

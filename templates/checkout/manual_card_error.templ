@@ -2,7 +2,7 @@ package checkout
 
 // ManualCardErrorModal displays errors for manual card entry but allows returning to the form
 templ ManualCardErrorModal(errorMessage string, intentID string) {
-	<div class="payment-error-container">
+	<div>
 		<h3>Payment Error</h3>
 		<p>{ errorMessage }</p>
 		if intentID != "" {

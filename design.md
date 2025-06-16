@@ -57,3 +57,30 @@ When handling payment completion, we have two options:
 3. **Infrastructure**
    - Set up a separate webhook URL for test vs. production mode
    - Add metrics collection for payment success/failure rates
+
+## Settings Page Improvements
+
+### TODO: Save Button Implementation
+- Add a Save button to the settings page for persisting changes
+- **Decision needed**: Determine if settings changes should:
+  - Require application restart for certain settings (like server address, port)
+  - Hot-reload for non-critical settings (like business info, tax rates)
+  - Show a warning/confirmation for settings that require restart
+- Consider implementing a "pending changes" indicator
+- Add validation before saving (e.g., valid email formats, numeric ranges)
+
+### TODO: Dynamic Template Generation
+- **Research**: Investigate if Templ supports for loops and dynamic content generation
+- **Goal**: Eliminate hardcoded setting and section names from templates
+- **Implementation**: Generate entire settings UI dynamically based on GetConfigFields() metadata
+- **Benefits**: 
+  - Adding new settings only requires updating the GetConfigFields() function
+  - No template changes needed for new settings
+  - Single source of truth (AppConfig struct)
+  - Type safety with direct field access
+  - Reduces code duplication and maintenance overhead
+- **Requirements**:
+  - Loop through sections returned by GetConfigFields()
+  - Loop through settings within each section
+  - Dynamically determine input types based on Go type (string, bool, float64)
+  - Maintain search functionality with dynamic content

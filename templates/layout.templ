@@ -17,12 +17,20 @@ templ Layout(title string) {
 		<link rel="icon" type="image/png" sizes="512x512" href="/static/images/favicon/android-chrome-512x512.png"/>
 		<link rel="manifest" href="/static/site.webmanifest"/>
 		
+		<link rel="stylesheet" href="/static/css/themes.css"/>
 		<link rel="stylesheet" href="/static/css/styles.css"/>
 		<script src="https://unpkg.com/htmx.org@1.9.6"></script>
         <script src="https://unpkg.com/htmx.org/dist/ext/sse.js"></script>
 		<script src="https://js.stripe.com/v3/"></script>
 	</head>
 	<body>
+		<!-- Theme Toggle -->
+		<div id="theme-toggle" class="theme-toggle">
+			<button onclick="toggleTheme()" title="Toggle theme">
+				<span class="theme-icon">🌙</span>
+			</button>
+		</div>
+		
 		<div id="toast" class="toast" hx-swap-oob="true"></div>
 		
 		<!-- Modal container -->
@@ -36,6 +44,52 @@ templ Layout(title string) {
 		{ children... }
 		
 		<script>
+			// Theme system
+			function toggleTheme() {
+				const html = document.documentElement;
+				const currentTheme = html.getAttribute('data-theme');
+				const themeIcon = document.querySelector('.theme-icon');
+				
+				if (currentTheme === 'dark') {
+					html.setAttribute('data-theme', 'light');
+					themeIcon.textContent = '🌙';
+					localStorage.setItem('theme', 'light');
+				} else {
+					html.setAttribute('data-theme', 'dark');
+					themeIcon.textContent = '☀️';
+					localStorage.setItem('theme', 'dark');
+				}
+			}
+			
+			// Initialize theme on page load
+			document.addEventListener('DOMContentLoaded', function() {
+				const savedTheme = localStorage.getItem('theme');
+				const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+				const themeIcon = document.querySelector('.theme-icon');
+				
+				if (savedTheme) {
+					document.documentElement.setAttribute('data-theme', savedTheme);
+					themeIcon.textContent = savedTheme === 'dark' ? '☀️' : '🌙';
+				} else if (prefersDark) {
+					document.documentElement.setAttribute('data-theme', 'dark');
+					themeIcon.textContent = '☀️';
+				}
+			});
+			
+			// Listen for system theme changes
+			window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
+				if (!localStorage.getItem('theme')) {
+					const themeIcon = document.querySelector('.theme-icon');
+					if (e.matches) {
+						document.documentElement.setAttribute('data-theme', 'dark');
+						themeIcon.textContent = '☀️';
+					} else {
+						document.documentElement.setAttribute('data-theme', 'light');
+						themeIcon.textContent = '🌙';
+					}
+				}
+			});
+			
 			// Actions menu dropdown toggle function
 			function toggleActionsMenu() {
 				const dropdown = document.getElementById('actionsDropdown');

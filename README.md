@@ -95,6 +95,27 @@ When running in HTTPS mode (local development), the application:
 - Certificate is regenerated on each startup (no persistent storage)
 - Enables proper Stripe.js functionality for manual card payments
 
+### Server Configuration
+
+- **Port**: The port the server listens on (default: 3000)
+- **Server Address**: The address to bind the server to (default: 0.0.0.0)
+  - Use `0.0.0.0` to allow connections from any interface
+  - Use `127.0.0.1` to only allow local connections
+- **Data Directory**: Where to store application data (default: ./data)
+- **Transactions Directory**: Where to store transaction files (default: ./data/transactions)
+- **Website Name**: Domain name for HTTPS support (optional)
+
+## Settings Management
+
+The application provides a web-based settings interface accessible from the POS system:
+
+- **Access**: Click the actions menu (⋮) in the top-right corner of the POS interface and select "Settings"
+- **Auto-Save**: All setting changes are automatically saved when you modify any field - no save button required
+- **Search**: Use the search bar to quickly find specific settings across all categories
+- **Categories**: Settings are organized into sections (Stripe, Business, Tax, System, Tipping, SMS)
+
+Settings can also be manually edited in the `./data/config.json` file when the application is stopped.
+
 ## Directory Structure
 
 - `/data`: Contains configuration and data files
