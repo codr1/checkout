@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/a-h/templ"
 	"github.com/skip2/go-qrcode"
 	"github.com/stripe/stripe-go/v74"
 	"github.com/stripe/stripe-go/v74/paymentlink"
@@ -20,27 +19,19 @@ func GenerateQRCodeHandler(w http.ResponseWriter, r *http.Request) {
 	// Check if cart is empty first
 	if len(services.AppState.CurrentCart) == 0 {
 		// Send a toast message for empty cart
-		w.Header().Set("HX-Trigger", `{"showToast": "Cart is empty. Please add items before generating a QR code."}`)
-		w.WriteHeader(http.StatusBadRequest)
+		w.Header().Set("HX-Trigger", `{"showToast": {"message": "Cart is empty. Please add items before generating a QR code.", "type": "warning"}}`)
+		w.WriteHeader(http.StatusOK) // Changed from BadRequest to OK since this is a valid user action
 		utils.Info("payment", "QR generation rejected - cart empty")
 		return
 	}
 
-	// Parse email from form if available
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Error parsing form", http.StatusBadRequest)
-		return
-	}
-
-	email := r.FormValue("email") // This might be empty
-
-	utils.Info("payment", "Starting QR code generation", "cart_items", len(services.AppState.CurrentCart), "email_provided", email != "")
+	utils.Info("payment", "Starting QR code generation", "cart_items", len(services.AppState.CurrentCart))
 	summary := services.CalculateCartSummary()
 
-	// Create and configure payment link
-	paymentLink, err := services.CreatePaymentLink(summary.Total, email)
+	// Create and configure payment link (no email - receipt will be collected post-payment)
+	paymentLink, err := services.CreatePaymentLink(summary.Total, "")
 	if err != nil {
-		utils.Error("payment", "Error creating payment link", "amount", summary.Total, "email", email, "error", err)
+		utils.Error("payment", "Error creating payment link", "amount", summary.Total, "error", err)
 		// Send error via toast message
 		w.Header().Set("HX-Trigger", fmt.Sprintf(`{"showToast": "Error creating payment link: %s"}`, err.Error()))
 		return
@@ -78,13 +69,8 @@ func GenerateQRCodeHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("HX-Trigger", "showModal")
 
 	// Use the QRCodeDisplay template to render the QR code in the modal
-	var qrDisplay templ.Component
-	if email != "" {
-		// Match the exact case in the template definition
-		qrDisplay = checkout.QRCodeDisplayWithEmail(qrBase64, paymentLink.ID, summary.Total, email)
-	} else {
-		qrDisplay = checkout.QRCodeDisplay(qrBase64, paymentLink.ID, summary.Total)
-	}
+	// No email collected pre-payment - receipt will be collected post-payment
+	qrDisplay := checkout.QRCodeDisplay(qrBase64, paymentLink.ID, summary.Total)
 	if err := qrDisplay.Render(r.Context(), w); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -121,7 +107,7 @@ func CancelTransactionHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Close modal and show success toast
 	w.Header().Set("Content-Type", "text/html")
-	w.Header().Set("HX-Trigger", `{"closeModal": true, "showToastSuccess": "Transaction cancelled - cart cleared", "cartUpdated": true}`)
+	w.Header().Set("HX-Trigger", `{"closeModal": true, "showToast": {"message": "Transaction cancelled - cart cleared", "type": "success"}, "cartUpdated": true}`)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("")) // Empty response since we're just triggering events
 }

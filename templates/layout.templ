@@ -22,6 +22,7 @@ templ Layout(title string) {
 		<script src="https://unpkg.com/htmx.org@1.9.6"></script>
         <script src="https://unpkg.com/htmx.org/dist/ext/sse.js"></script>
 		<script src="https://js.stripe.com/v3/"></script>
+		<script src="/static/js/payment-countdown.js"></script>
 	</head>
 	<body>
 		<!-- Theme Toggle -->
@@ -106,21 +107,35 @@ templ Layout(title string) {
 				}
 			});
 			
-			// HTMX event listener for toast messages
+			// HTMX event listener for toast messages with type support
 			document.body.addEventListener('showToast', function(evt) {
 				const toast = document.getElementById('toast');
-				toast.textContent = evt.detail;
-				toast.className = 'toast show'; // Reset classes and add show
-				setTimeout(function() {
-					toast.classList.remove('show');
-				}, 3000);
-			});
-			
-			// HTMX event listener for success toast messages (green)
-			document.body.addEventListener('showToastSuccess', function(evt) {
-				const toast = document.getElementById('toast');
-				toast.textContent = evt.detail;
-				toast.className = 'toast toast-success show'; // Add success styling
+				let message, type;
+				
+				// Handle both string and object formats
+				if (typeof evt.detail === 'string') {
+					message = evt.detail;
+					type = 'default';
+				} else {
+					message = evt.detail.message || evt.detail;
+					type = evt.detail.type || 'default';
+				}
+				
+				toast.textContent = message;
+				
+				// Set classes based on type
+				switch(type) {
+					case 'success':
+						toast.className = 'toast toast-success show';
+						break;
+					case 'warning':
+					case 'error':
+						toast.className = 'toast toast-warning show';
+						break;
+					default:
+						toast.className = 'toast show';
+				}
+				
 				setTimeout(function() {
 					toast.classList.remove('show');
 				}, 3000);
@@ -135,14 +150,6 @@ templ Layout(title string) {
 						if (triggers.showToast) {
 							const event = new CustomEvent('showToast', {
 								detail: triggers.showToast
-							});
-							document.body.dispatchEvent(event);
-						}
-						
-						// Handle showToastSuccess trigger
-						if (triggers.showToastSuccess) {
-							const event = new CustomEvent('showToastSuccess', {
-								detail: triggers.showToastSuccess
 							});
 							document.body.dispatchEvent(event);
 						}

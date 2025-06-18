@@ -1,17 +1,15 @@
 package checkout
 
+import "checkout/config"
+
 // Payment Success Component
-templ PaymentSuccess(confirmationCode string, hasContactInfo bool) {
+templ PaymentSuccess(confirmationCode string) {
 	<div id="payment-container">
 		<h3>Payment Successful! ✅</h3>
 		<p>Your payment has been processed successfully.</p>
 		<p>Confirmation Code: { confirmationCode }</p>
 		
-		if hasContactInfo {
-			<p>A receipt will be sent to the contact information you provided.</p>
-		} else {
-			@ReceiptForm(confirmationCode)
-		}
+		@ReceiptForm(confirmationCode)
 		
 		<button
 			type="button"
@@ -23,6 +21,12 @@ templ PaymentSuccess(confirmationCode string, hasContactInfo bool) {
 		>
 			Close
 		</button>
+		
+		<!-- Hidden trigger to update cart after payment success -->
+		<div style="display: none;"
+			hx-post="/trigger-cart-update"
+			hx-trigger="load"
+			hx-swap="none"></div>
 	</div>
 	
 	<!-- Stop SSE reconnection attempts -->
@@ -48,10 +52,16 @@ templ ReceiptForm(confirmationCode string) {
 				<label for="receipt_email">Email:</label>
 				<input type="email" id="receipt_email" name="receipt_email" placeholder="your@email.com" />
 			</div>
-			<div>
-				<label for="receipt_phone">Phone Number:</label>
-				<input type="tel" id="receipt_phone" name="receipt_phone" placeholder="(123) 456-7890" />
-			</div>
+			if config.IsSMSEnabled() {
+				<div>
+					<label for="receipt_phone">Phone Number:</label>
+					<input type="tel" id="receipt_phone" name="receipt_phone" placeholder="(123) 456-7890" />
+				</div>
+			} else {
+				<div style="font-size: 0.8em; color: #666; margin-top: 8px;">
+					SMS receipt sending is not currently enabled.
+				</div>
+			}
 			<button type="submit">Send Receipt</button>
 		</form>
 	</div>
@@ -59,7 +69,7 @@ templ ReceiptForm(confirmationCode string) {
 
 // Payment Expired Component
 templ PaymentExpired(expirationCode string) {
-	<div>
+	<div id="payment-container">
 		<h3>Payment Link Expired ⌛</h3>
 		<p>The payment link has expired and has been cancelled.</p>
 		<p>Expiration Code: { expirationCode }</p>
@@ -83,6 +93,18 @@ templ PaymentExpired(expirationCode string) {
 			Try Again
 		</button>
 	</div>
+	
+	<!-- Stop SSE reconnection attempts -->
+	<script>
+		// Find and close any active SSE connections to prevent reconnection
+		document.querySelectorAll('[hx-ext*="sse"]').forEach(function(el) {
+			if (el._sseSource) {
+				el._sseSource.close();
+				el.removeAttribute('hx-ext');
+				el.removeAttribute('sse-connect');
+			}
+		});
+	</script>
 }
 
 // Payment Cancelled Component

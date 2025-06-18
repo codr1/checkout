@@ -309,6 +309,12 @@ input[type="tel"]:focus {
   border-color: var(--success);
 }
 
+.toast.toast-warning {
+  background-color: var(--danger);
+  color: var(--surface-1);
+  border-color: var(--danger);
+}
+
 /* Modal styles */
 .modal-container {
   position: fixed;

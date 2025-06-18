@@ -28,7 +28,6 @@ type Transaction struct {
 	Tax           float64   `json:"tax"`
 	Total         float64   `json:"total"`
 	PaymentType   string    `json:"paymentType"`
-	CustomerEmail string    `json:"customerEmail,omitempty"`
 	CustomerPhone string    `json:"customerPhone,omitempty"`
 	ReceiptSent   bool      `json:"receiptSent,omitempty"`
 
@@ -37,6 +36,38 @@ type Transaction struct {
 	PaymentLinkStatus string `json:"paymentLinkStatus,omitempty"`
 	ConfirmationCode  string `json:"confirmationCode,omitempty"`
 	FailureReason     string `json:"failureReason,omitempty"`
+
+	// Stripe-collected customer information (from QR payments)
+	StripeCustomerEmail string `json:"stripeCustomerEmail,omitempty"` // Email collected by Stripe during QR payment
+}
+
+// ReceiptRecord represents a post-payment receipt delivery record
+// This is stored separately from transaction records for data integrity
+type ReceiptRecord struct {
+	ID             string `json:"id"`                     // Payment/Transaction ID
+	Date           string `json:"date"`                   // When receipt was requested
+	Time           string `json:"time"`                   // When receipt was requested
+	ReceiptEmail   string `json:"receiptEmail,omitempty"` // Email provided for receipt
+	ReceiptPhone   string `json:"receiptPhone,omitempty"` // Phone provided for receipt
+	DeliveryMethod string `json:"deliveryMethod"`         // "email", "sms", or "both"
+	DeliveryStatus string `json:"deliveryStatus"`         // "pending", "sent", "failed"
+	ErrorMessage   string `json:"errorMessage,omitempty"` // If delivery failed
+	RetryCount     int    `json:"retryCount"`             // Number of retry attempts
+	LastAttempt    string `json:"lastAttempt,omitempty"`  // Timestamp of last delivery attempt
+}
+
+// PaymentUpdateRecord represents updates to payment information after completion
+// This allows tracking changes to customer data without modifying original transaction
+type PaymentUpdateRecord struct {
+	PaymentID  string `json:"paymentId"`           // Original payment/transaction ID
+	UpdateDate string `json:"updateDate"`          // When this update was made
+	UpdateTime string `json:"updateTime"`          // When this update was made
+	UpdateType string `json:"updateType"`          // "customer_info", "receipt_delivery", etc.
+	OldValue   string `json:"oldValue,omitempty"`  // Previous value (if applicable)
+	NewValue   string `json:"newValue,omitempty"`  // New value
+	FieldName  string `json:"fieldName,omitempty"` // Which field was updated
+	Source     string `json:"source"`              // "stripe_webhook", "manual_receipt", etc.
+	Notes      string `json:"notes,omitempty"`     // Additional context
 }
 
 // TaxCategory represents a product category with its own tax rate

@@ -118,13 +118,17 @@ func (psm *PaymentStateManager) RemovePaymentAndClearCart(id string) {
 	psm.mutex.Lock()
 	defer psm.mutex.Unlock()
 
+	// DEBUG: Log cart state before clearing
+	utils.Debug("payment", "RemovePaymentAndClearCart called", "payment_id", id, "cart_items_before", len(services.AppState.CurrentCart))
+
 	// Remove the payment state
 	delete(psm.states, id)
 
 	// Clear the cart since the transaction is complete/cancelled
 	services.AppState.CurrentCart = []templates.Service{}
 
-	utils.Debug("payment", "Removed payment state and cleared cart", "payment_id", id)
+	// DEBUG: Log cart state after clearing
+	utils.Debug("payment", "Removed payment state and cleared cart", "payment_id", id, "cart_items_after", len(services.AppState.CurrentCart))
 }
 
 // ClearAllAndClearCart removes all payment states and clears the cart in one operation
@@ -259,15 +263,15 @@ func (pel *PaymentEventLogger) LogPaymentEvent(paymentID string, eventType Payme
 	paymentTypeStr := pel.getPaymentTypeString(paymentMethod, eventType)
 
 	transaction := templates.Transaction{
-		ID:            paymentID,
-		Date:          now.Format("01/02/2006"),
-		Time:          now.Format("15:04:05"),
-		Services:      cart,
-		Subtotal:      summary.Subtotal,
-		Tax:           summary.Tax,
-		Total:         summary.Total,
-		PaymentType:   paymentTypeStr,
-		CustomerEmail: email,
+		ID:          paymentID,
+		Date:        now.Format("01/02/2006"),
+		Time:        now.Format("15:04:05"),
+		Services:    cart,
+		Subtotal:    summary.Subtotal,
+		Tax:         summary.Tax,
+		Total:       summary.Total,
+		PaymentType: paymentTypeStr,
+		// StripeCustomerEmail will be tracked separately via payment update records
 	}
 
 	// Save transaction with error logging
@@ -312,6 +316,21 @@ func (pel *PaymentEventLogger) LogPaymentEventFromState(state PaymentState, even
 	}
 
 	return pel.LogPaymentEvent(state.GetID(), eventType, paymentMethod, cart, summary, email)
+}
+
+// LogPaymentEventWithStripeEmail logs a payment event including Stripe-collected customer info
+func (pel *PaymentEventLogger) LogPaymentEventWithStripeEmail(paymentID string, eventType PaymentEventType, paymentMethod string, cart []templates.Service, summary templates.CartSummary, email string, stripeEmail string) error {
+	// First log the standard transaction
+	if err := pel.LogPaymentEvent(paymentID, eventType, paymentMethod, cart, summary, email); err != nil {
+		return err
+	}
+
+	// Then log the Stripe customer info if provided
+	if stripeEmail != "" {
+		return services.LogStripeCustomerInfo(paymentID, stripeEmail)
+	}
+
+	return nil
 }
 
 // LogPaymentEventQuick logs a simple payment event (for failures/cancellations without detailed cart data)

@@ -311,13 +311,13 @@ The backend automatically selects the optimal communication method with Stripe b
 ### Polling Mode (Development)
 - **When**: No domain configured or domain is "localhost"
 - **Protocol**: HTTPS with self-signed certificate
-- **Method**: Frontend polls backend every 2s, backend polls Stripe API
+- **Method**: Frontend initiates and SSE connection (psuh) and waits for update, backend polls Stripe API
 - **Benefits**: Works without external webhooks, simple setup
 
 ### Webhook Mode (Production)
 - **When**: Domain is configured (not localhost/empty)
 - **Protocol**: HTTP (expects SSL termination by proxy)
-- **Method**: Frontend polls backend every 2s, backend receives Stripe webhooks
+- **Method**: Frontend initiates and SSE connection (psuh) and waits for update, backend receives Stripe webhooks
 - **Benefits**: More efficient, real-time updates, reduced API calls
 
 ### Automatic Webhook Registration

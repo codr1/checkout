@@ -24,5 +24,14 @@
     "stripeProductID": "prod_SOJ8SI7Jqro2ih",
     "priceID": "price_1RTWWh00bLhtgRGrgRk9DwNJ",
     "category": "clothing_exempt"
+  },
+  {
+    "id": "4",
+    "name": "League",
+    "description": "6 week league",
+    "price": 200,
+    "stripeProductID": "prod_SW5rZznK8CbJu5",
+    "priceID": "price_1Rb3gF00bLhtgRGrCLOTQXyj",
+    "category": "leagues"
   }
 ]

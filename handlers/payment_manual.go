@@ -19,8 +19,8 @@ func ManualCardFormHandler(w http.ResponseWriter, r *http.Request) {
 	// Check if cart is empty first (for both GET and POST)
 	if len(services.AppState.CurrentCart) == 0 {
 		// Send a toast message for empty cart
-		w.Header().Set("HX-Trigger", `{"showToast": "Cart is empty. Please add items before entering card details."}`)
-		w.WriteHeader(http.StatusBadRequest)
+		w.Header().Set("HX-Trigger", `{"showToast": {"message": "Cart is empty. Please add items before entering card details.", "type": "warning"}}`)
+		w.WriteHeader(http.StatusOK) // Changed from BadRequest to OK since this is a valid user action
 		utils.Warn("payment", "Manual card entry rejected - cart empty")
 		return
 	}
@@ -53,7 +53,6 @@ func processManualCardPayment(w http.ResponseWriter, r *http.Request) {
 	// Extract payment method ID and other form data
 	paymentMethodID := r.FormValue("payment_method_id")
 	cardholder := r.FormValue("cardholder")
-	email := r.FormValue("email")
 
 	// Validate required fields (only payment method ID and cardholder are required)
 	if paymentMethodID == "" {
@@ -77,14 +76,9 @@ func processManualCardPayment(w http.ResponseWriter, r *http.Request) {
 		PaymentMethodTypes: []*string{stripe.String("card")},
 	}
 
-	// Add receipt email if provided
-	if email != "" {
-		params.ReceiptEmail = stripe.String(email)
-	}
-
 	intent, err := paymentintent.New(params)
 	if err != nil {
-		utils.Error("payment", "Error creating payment intent", "amount", summary.Total, "email", email, "error", err)
+		utils.Error("payment", "Error creating payment intent", "amount", summary.Total, "error", err)
 		w.Header().Set("HX-Trigger", `{"showToast": "Error processing payment"}`)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -96,10 +90,6 @@ func processManualCardPayment(w http.ResponseWriter, r *http.Request) {
 	// We just need to confirm the payment intent with the existing payment method
 	confirmParams := &stripe.PaymentIntentConfirmParams{
 		PaymentMethod: stripe.String(paymentMethodID),
-	}
-
-	if email != "" {
-		confirmParams.ReceiptEmail = stripe.String(email)
 	}
 
 	intent, err = paymentintent.Confirm(intentID, confirmParams)
@@ -130,7 +120,7 @@ func processManualCardPayment(w http.ResponseWriter, r *http.Request) {
 	switch intent.Status {
 	case stripe.PaymentIntentStatusSucceeded:
 		// Payment successful
-		handleManualPaymentSuccess(w, r, intent, email)
+		handleManualPaymentSuccess(w, r, intent)
 	case stripe.PaymentIntentStatusRequiresAction:
 		// 3D Secure or other authentication required
 		renderManualPaymentAuthentication(w, r, intent)
@@ -141,27 +131,27 @@ func processManualCardPayment(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleManualPaymentSuccess handles a successful manual card payment
-func handleManualPaymentSuccess(w http.ResponseWriter, r *http.Request, intent *stripe.PaymentIntent, email string) {
+func handleManualPaymentSuccess(w http.ResponseWriter, r *http.Request, intent *stripe.PaymentIntent) {
 	utils.Info("payment", "Manual card payment succeeded", "intent_id", intent.ID, "amount", float64(intent.Amount)/100)
 
 	// Calculate cart summary for transaction record
 	summary := services.CalculateCartSummary()
 
-	// Save transaction
+	// Save transaction (no email provided - will be collected via receipt form)
 	_ = GlobalPaymentEventLogger.LogPaymentEvent(
 		intent.ID,
 		PaymentEventSuccess,
 		"manual",
 		services.AppState.CurrentCart,
 		summary,
-		email,
+		"", // No email - will be collected post-payment via receipt form
 	)
 
 	// Clear cart
 	services.AppState.CurrentCart = []templates.Service{}
 
-	// Render success modal
-	if err := renderSuccessModal(w, r, intent.ID, email != ""); err != nil {
+	// Render success modal (always show receipt form)
+	if err := renderSuccessModal(w, r, intent.ID, false); err != nil {
 		utils.Error("payment", "Error rendering payment success modal", "intent_id", intent.ID, "error", err)
 	}
 }

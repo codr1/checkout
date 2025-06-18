@@ -10,6 +10,7 @@ import (
 	"checkout/templates"
 	"checkout/templates/checkout"
 	"checkout/templates/pos"
+	"checkout/utils"
 )
 
 // ServicesHandler renders the services list
@@ -23,6 +24,8 @@ func ServicesHandler(w http.ResponseWriter, r *http.Request) {
 
 // CartHandler renders the cart contents
 func CartHandler(w http.ResponseWriter, r *http.Request) {
+	utils.Debug("cart", "CartHandler called", "cart_items", len(services.AppState.CurrentCart))
+
 	summary := services.CalculateCartSummary()
 
 	component := pos.CartView(services.AppState.CurrentCart, summary)
@@ -110,4 +113,12 @@ func RemoveFromCartHandler(w http.ResponseWriter, r *http.Request) {
 		services.AppState.CurrentCart[:index],
 		services.AppState.CurrentCart[index+1:]...)
 	w.Header().Set("HX-Trigger", "cartUpdated")
+}
+
+// TriggerCartUpdateHandler sends a cartUpdated event to refresh the cart display
+// This is used by SSE events when payment completes to refresh the cart
+func TriggerCartUpdateHandler(w http.ResponseWriter, r *http.Request) {
+	utils.Debug("cart", "Triggering cart update event")
+	w.Header().Set("HX-Trigger", "cartUpdated")
+	w.WriteHeader(http.StatusOK)
 }

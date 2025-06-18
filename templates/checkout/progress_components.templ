@@ -19,22 +19,20 @@ type PaymentSSEConfig struct {
 
 // PaymentSSEContainer creates the SSE connection and expiration logic
 templ PaymentSSEContainer(sseConfig PaymentSSEConfig) {
-	<!-- SSE connection for completion events only -->
-	<div id={ fmt.Sprintf("%s-sse-progress", sseConfig.PaymentType) }
+	<!-- Single SSE connection with multiple event handlers -->
+	<div id={ fmt.Sprintf("%s-sse-container", sseConfig.PaymentType) }
 		hx-ext="sse"
-		sse-connect={ fmt.Sprintf("/payment-events?payment_id=%s&type=%s", sseConfig.PaymentID, sseConfig.PaymentType) }
-		sse-swap="payment-update"
-		hx-target={ "#" + sseConfig.PaymentType + "-payment-status-details" }
-		hx-swap="innerHTML">
-	</div>
+		sse-connect={ fmt.Sprintf("/payment-events?payment_id=%s&type=%s", sseConfig.PaymentID, sseConfig.PaymentType) }>
+		
+		<!-- Handler for payment progress updates -->
+		<div sse-swap="payment-update" 
+			hx-target={ "#" + sseConfig.PaymentType + "-payment-status-details" }
+			hx-swap="innerHTML"></div>
 	
-	<!-- SSE connection for modal replacement on completion -->
-	<div id={ fmt.Sprintf("%s-sse-modal", sseConfig.PaymentType) }
-		hx-ext="sse"
-		sse-connect={ fmt.Sprintf("/payment-events?payment_id=%s&type=%s", sseConfig.PaymentID, sseConfig.PaymentType) }
-		sse-swap="modal-update"
+		<!-- Handler for modal replacement on completion -->
+		<div sse-swap="modal-update" 
 		hx-target="#modal-content"
-		hx-swap="innerHTML">
+			hx-swap="innerHTML"></div>
 	</div>
 	
 	<!-- Auto-expiration trigger (server timeout) -->
@@ -49,7 +47,7 @@ templ PaymentSSEContainer(sseConfig PaymentSSEConfig) {
 	} else if sseConfig.ExpireEndpoint != "" {
 		<div class="hidden-action-trigger"
 			hx-post={ sseConfig.ExpireEndpoint }
-			hx-vals={ "{\"payment_link_id\": \"" + sseConfig.PaymentID + "\"}" }
+			hx-vals={ "{\"payment_id\": \"" + sseConfig.PaymentID + "\", \"type\": \"" + sseConfig.PaymentType + "\"}" }
 			hx-target="#modal-content"
 			hx-swap="innerHTML"
 			hx-trigger={ fmt.Sprintf("load delay:%s", sseConfig.ExpireDelay) }>
@@ -115,17 +113,6 @@ templ PaymentCancelButton(paymentType string, paymentID string, includeFields st
 	</button>
 }
 
-// SimpleProgressDisplay shows progress without polling (used by handlers)
-templ SimpleProgressDisplay(paymentType string, secondsRemaining int, progressWidth float64, statusMessage string) {
-	<div class={ fmt.Sprintf("payment-progress %s-progress", paymentType) }>
-		<p>{ statusMessage }</p>
-		<p>Payment expires in <span id="countdown">{ strconv.Itoa(secondsRemaining) }</span> seconds</p>
-		<div class="progress-bar">
-			<div class="progress-fill" style={ fmt.Sprintf("width: %.1f%%;", progressWidth) }></div>
-		</div>
-	</div>
-}
-
 // QRPaymentContainer - Payment container for QR code payments
 templ QRPaymentContainer(qrBase64 string, paymentLinkID string, totalAmount float64, customerEmail string) {
 	<div id="qr-payment-container">
@@ -142,14 +129,9 @@ templ QRPaymentContainer(qrBase64 string, paymentLinkID string, totalAmount floa
 		@PaymentStatusArea("qr", paymentLinkID, fmt.Sprintf("Payment ID: %s", paymentLinkID))
 		
 		<!-- JavaScript countdown timer (visual only) -->
-		<script src="/static/js/payment-countdown.js"></script>
-		<script>
-			document.addEventListener('DOMContentLoaded', function() {
-				if (document.getElementById('qr-countdown') && document.getElementById('qr-progress-fill')) {
-					initPaymentCountdown('qr-countdown', 'qr-progress-fill', { strconv.Itoa(config.GetPaymentTimeoutSeconds()) });
-				}
-			});
-		</script>
+		@templ.Raw(fmt.Sprintf(`<script>
+			initPaymentCountdown('qr-countdown', 'qr-progress-fill', %d);
+		</script>`, config.GetPaymentTimeoutSeconds()))
 
 		<!-- SSE configuration -->
 		@PaymentSSEContainer(PaymentSSEConfig{
@@ -181,14 +163,9 @@ templ TerminalPaymentContainer(paymentIntentID string, readerID string, totalAmo
 		@PaymentStatusArea("terminal", paymentIntentID, fmt.Sprintf("Reader: %s | Payment ID: %s", readerID, paymentIntentID))
 		
 		<!-- JavaScript countdown timer (visual only) -->
-		<script src="/static/js/payment-countdown.js"></script>
-		<script>
-			document.addEventListener('DOMContentLoaded', function() {
-				if (document.getElementById('terminal-countdown') && document.getElementById('terminal-progress-fill')) {
-					initPaymentCountdown('terminal-countdown', 'terminal-progress-fill', { strconv.Itoa(config.GetPaymentTimeoutSeconds()) });
-				}
-			});
-		</script>
+		@templ.Raw(fmt.Sprintf(`<script>
+			initPaymentCountdown('terminal-countdown', 'terminal-progress-fill', %d);
+		</script>`, config.GetPaymentTimeoutSeconds()))
 
 		<!-- SSE configuration -->
 		@PaymentSSEContainer(PaymentSSEConfig{

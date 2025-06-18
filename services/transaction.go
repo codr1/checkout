@@ -50,8 +50,8 @@ func SaveTransactionToCSV(transaction templates.Transaction) error {
 	if !fileExists {
 		headers := []string{
 			"Date", "Time", "Transaction ID", "Item/Service", "Description",
-			"Quantity", "Unit Price", "Tax", "Total", "Payment Method", "Customer Email",
-			"Payment Link ID", "Payment Link Status", "Confirmation Code", "Failure Reason",
+			"Quantity", "Unit Price", "Tax", "Total", "Payment Method",
+			"Stripe Customer Email", "Payment Link ID", "Payment Link Status", "Confirmation Code", "Failure Reason",
 		}
 		if err := writer.Write(headers); err != nil {
 			return err
@@ -71,7 +71,7 @@ func SaveTransactionToCSV(transaction templates.Transaction) error {
 			"",                                     // Tax
 			fmt.Sprintf("%.2f", transaction.Total), // Total (may be 0 for cancellations)
 			transaction.PaymentType,
-			transaction.CustomerEmail,
+			transaction.StripeCustomerEmail,
 			transaction.PaymentLinkID,
 			transaction.PaymentLinkStatus,
 			transaction.ConfirmationCode,
@@ -114,7 +114,7 @@ func SaveTransactionToCSV(transaction templates.Transaction) error {
 			fmt.Sprintf("%.2f", tax),
 			fmt.Sprintf("%.2f", total),
 			transaction.PaymentType,
-			transaction.CustomerEmail,
+			transaction.StripeCustomerEmail,
 			transaction.PaymentLinkID,
 			transaction.PaymentLinkStatus,
 			transaction.ConfirmationCode,

@@ -147,18 +147,9 @@ func shouldUseHTTPS() bool {
 	return websiteName == "" || websiteName == "localhost"
 }
 
-// getCommunicationStrategy determines whether to use polling or webhooks
-func getCommunicationStrategy() string {
-	websiteName := strings.TrimSpace(config.Config.WebsiteName)
-	if websiteName != "" && websiteName != "localhost" {
-		return "webhooks"
-	}
-	return "polling"
-}
-
 // registerWebhookEndpoint registers webhook endpoint with Stripe if using webhooks strategy
 func registerWebhookEndpoint() {
-	strategy := getCommunicationStrategy()
+	strategy := config.GetCommunicationStrategy()
 	if strategy != "webhooks" {
 		utils.Info("communication", "Using polling strategy", "reason", "localhost/no domain")
 		return
@@ -254,6 +245,7 @@ func main() {
 	appMux.HandleFunc("/cancel-or-refresh-payment", handlers.CancelOrRefreshPaymentHandler)
 	appMux.HandleFunc("/cancel-transaction", handlers.CancelTransactionHandler)
 	appMux.HandleFunc("/update-receipt-info", handlers.ReceiptInfoHandler)
+	appMux.HandleFunc("/trigger-cart-update", handlers.TriggerCartUpdateHandler)
 
 	// Settings routes
 	appMux.HandleFunc("/settings", handlers.SettingsHandler)

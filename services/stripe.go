@@ -196,20 +196,20 @@ func CreatePaymentLink(totalAmount float64, email string) (*stripe.PaymentLink, 
 		})
 	}
 
-	// Define baseURL for success URL
-	var baseURL string
-	if config.Config.WebsiteName != "" {
-		baseURL = "https://" + config.Config.WebsiteName
+	// Only set custom success URL in webhook mode
+	// In polling mode, let Stripe use their default success page
+	if config.GetCommunicationStrategy() == "webhooks" {
+		baseURL := "https://" + config.Config.WebsiteName
+		params.AfterCompletion = &stripe.PaymentLinkAfterCompletionParams{
+			Type: stripe.String(string(stripe.PaymentLinkAfterCompletionTypeRedirect)),
+			Redirect: &stripe.PaymentLinkAfterCompletionRedirectParams{
+				URL: stripe.String(baseURL + "/payment-success"),
+			},
+		}
+		utils.Debug("stripe", "Using custom success URL for webhook mode", "url", baseURL+"/payment-success")
 	} else {
-		// Fallback to a localhost URL if WebsiteName is not configured
-		baseURL = "http://localhost:3000"
-	}
-
-	params.AfterCompletion = &stripe.PaymentLinkAfterCompletionParams{
-		Type: stripe.String(string(stripe.PaymentLinkAfterCompletionTypeRedirect)),
-		Redirect: &stripe.PaymentLinkAfterCompletionRedirectParams{
-			URL: stripe.String(baseURL + "/payment-success"),
-		},
+		// Polling mode - don't set AfterCompletion, let Stripe use default success page
+		utils.Debug("stripe", "Using default Stripe success page for polling mode")
 	}
 
 	// Create the payment link

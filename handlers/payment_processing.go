@@ -9,6 +9,7 @@ import (
 	"github.com/stripe/stripe-go/v74"
 	"github.com/stripe/stripe-go/v74/paymentintent"
 
+	"checkout/config"
 	"checkout/services"
 	"checkout/templates"
 	"checkout/templates/checkout"
@@ -57,7 +58,8 @@ func renderErrorModal(w http.ResponseWriter, r *http.Request, message, id string
 // Replaces the common pattern of showing success modals with cart updates
 func renderSuccessModal(w http.ResponseWriter, r *http.Request, paymentID string, hasEmail bool) error {
 	utils.Info("payment", "Rendering success modal", "payment_id", paymentID, "has_email", hasEmail)
-	return renderModal(w, r, checkout.PaymentSuccess(paymentID, hasEmail), `"cartUpdated": true`)
+	// Always show receipt form after payment completion
+	return renderModal(w, r, checkout.PaymentSuccess(paymentID), `"cartUpdated": true`)
 }
 
 // renderInfoModal - Specialized helper for informational modals
@@ -69,8 +71,8 @@ func renderInfoModal(w http.ResponseWriter, r *http.Request, component templ.Com
 // ProcessPaymentHandler handles payment processing
 func ProcessPaymentHandler(w http.ResponseWriter, r *http.Request) {
 	if len(services.AppState.CurrentCart) == 0 {
-		w.Header().Set("HX-Trigger", `{"showToast": "Cart is empty"}`)
-		w.WriteHeader(http.StatusBadRequest)
+		w.Header().Set("HX-Trigger", `{"showToast": {"message": "Cart is empty", "type": "warning"}}`)
+		w.WriteHeader(http.StatusOK) // Changed from BadRequest to OK since this is a valid user action
 		return
 	}
 
@@ -79,7 +81,6 @@ func ProcessPaymentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	email := r.FormValue("email")
 	paymentMethod := r.FormValue("payment_method")
 
 	// Calculate cart summary with taxes
@@ -114,11 +115,6 @@ func ProcessPaymentHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Add receipt email if provided
-	if email != "" {
-		params.ReceiptEmail = stripe.String(email)
-	}
-
 	intent, err := paymentintent.New(params)
 	if err != nil {
 		utils.Error("payment", "Error creating payment intent", "payment_method", paymentMethod, "amount", summary.Total, "error", err)
@@ -133,7 +129,7 @@ func ProcessPaymentHandler(w http.ResponseWriter, r *http.Request) {
 	switch paymentMethod {
 	case "terminal":
 		// Delegate all terminal processing to payment_terminal.go
-		result := ProcessTerminalPayment(w, r, intent, email, summary)
+		result := ProcessTerminalPayment(w, r, intent, "", summary)
 		if result.ShouldStop {
 			if result.PaymentSuccess {
 				paymentSuccess = true
@@ -160,7 +156,7 @@ func ProcessPaymentHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(
 			w,
 			r,
-			fmt.Sprintf("/generate-qr-code?intent_id=%s&email=%s", intent.ID, email),
+			fmt.Sprintf("/generate-qr-code?intent_id=%s", intent.ID),
 			http.StatusSeeOther,
 		)
 		return
@@ -173,21 +169,21 @@ func ProcessPaymentHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Handle successful payment (terminal immediate success)
 	if paymentSuccess {
-		// Log the successful transaction
+		// Log the successful transaction (no email - will be collected post-payment)
 		_ = GlobalPaymentEventLogger.LogPaymentEvent(
 			intent.ID,
 			PaymentEventSuccess,
 			paymentMethod,
 			services.AppState.CurrentCart,
 			summary,
-			email,
+			"", // No email - will be collected post-payment via receipt form
 		)
 
 		// Clear cart
 		services.AppState.CurrentCart = []templates.Service{}
 
-		// Show success modal
-		if renderErr := renderSuccessModal(w, r, intent.ID, email != ""); renderErr != nil {
+		// Show success modal (always show receipt form)
+		if renderErr := renderSuccessModal(w, r, intent.ID, false); renderErr != nil {
 			utils.Error("payment", "Error rendering payment success modal", "intent_id", intent.ID, "error", renderErr)
 		}
 	}
@@ -207,9 +203,31 @@ func ReceiptInfoHandler(w http.ResponseWriter, r *http.Request) {
 	// Debug: Log what we received to understand the current form structure
 	utils.Debug("receipt", "ReceiptInfoHandler called", "method", r.Method, "confirmation_code", confirmationCode, "email", email, "phone", phone)
 
-	// Validate that at least one contact method is provided
-	if email == "" && phone == "" {
-		renderReceiptError(w, "Please provide either an email address or phone number.")
+	// Validate that at least email is provided (phone only if SMS is enabled)
+	if email == "" {
+		if phone != "" && !config.IsSMSEnabled() {
+			renderReceiptError(w, "Please provide an email address. SMS receipts are not currently enabled.")
+		} else {
+			renderReceiptError(w, "Please provide an email address.")
+		}
+		return
+	}
+
+	// Determine delivery method
+	var deliveryMethod string
+	if email != "" && phone != "" {
+		deliveryMethod = "both"
+	} else if email != "" {
+		deliveryMethod = "email"
+	} else {
+		deliveryMethod = "sms"
+	}
+
+	// Create initial receipt record
+	receiptRecord := services.CreateReceiptRecord(confirmationCode, email, phone, deliveryMethod, "pending")
+	if err := services.SaveReceiptRecord(receiptRecord); err != nil {
+		utils.Error("receipt", "Error saving receipt record", "confirmation_code", confirmationCode, "error", err)
+		renderReceiptError(w, "Error recording receipt request. Please try again.")
 		return
 	}
 
@@ -223,19 +241,39 @@ func ReceiptInfoHandler(w http.ResponseWriter, r *http.Request) {
 		if sendError == nil {
 			sentMethod = "email"
 		}
-	} else if phone != "" {
-		// Send SMS receipt
-		sendError = sendSMSReceipt(confirmationCode, phone)
-		if sendError == nil {
-			sentMethod = "phone"
+	}
+
+	if phone != "" && sendError == nil && config.IsSMSEnabled() {
+		// Send SMS receipt (only if SMS is enabled)
+		smsError := sendSMSReceipt(confirmationCode, phone)
+		if smsError == nil {
+			if sentMethod == "" {
+				sentMethod = "SMS"
+			} else {
+				sentMethod = "email and SMS"
+			}
+		} else if sendError == nil {
+			sendError = smsError // Only set error if email didn't already fail
 		}
 	}
 
-	// Handle the result
+	// Update receipt delivery status
+	var finalStatus string
+	var errorMessage string
 	if sendError != nil {
-		utils.Error("receipt", "Error sending receipt", "confirmation_code", confirmationCode, "method", sentMethod, "error", sendError)
+		finalStatus = "failed"
+		errorMessage = sendError.Error()
+		utils.Error("receipt", "Error sending receipt", "confirmation_code", confirmationCode, "method", deliveryMethod, "error", sendError)
+
+		// Log the failure
+		_ = services.UpdateReceiptDeliveryStatus(confirmationCode, finalStatus, errorMessage)
+
 		renderReceiptError(w, "Failed to send receipt. Please check your contact information and try again.")
 		return
+	} else {
+		finalStatus = "sent"
+		// Log the success
+		_ = services.UpdateReceiptDeliveryStatus(confirmationCode, finalStatus, "")
 	}
 
 	// Success - render success component

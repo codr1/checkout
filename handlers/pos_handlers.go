@@ -107,7 +107,7 @@ func SetSelectedReaderHandler(w http.ResponseWriter, r *http.Request) {
 	utils.Info("pos", "Stripe Terminal reader selected", "reader_id", readerID, "reader_label", selectedReaderLabel)
 
 	toastMessage := fmt.Sprintf("Reader '%s' selected.", selectedReaderLabel)
-	w.Header().Set("HX-Trigger", fmt.Sprintf(`{"showToastSuccess": %q}`, toastMessage))
+	w.Header().Set("HX-Trigger", fmt.Sprintf(`{"showToast": {"message": %q, "type": "success"}}`, toastMessage))
 	w.WriteHeader(http.StatusOK)
 	// Optionally, could also trigger a refresh of a part of the page if needed,
 	// but for now, just a toast. The POSHandler will pick up the new selection on next full page load/navigation.

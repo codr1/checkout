@@ -80,6 +80,15 @@ func GetFailsafeTimeoutSeconds() int {
 	return int(PaymentFailsafeTimeout.Seconds())
 }
 
+// GetCommunicationStrategy determines whether to use polling or webhooks
+func GetCommunicationStrategy() string {
+	websiteName := strings.TrimSpace(Config.WebsiteName)
+	if websiteName != "" && websiteName != "localhost" {
+		return "webhooks"
+	}
+	return "polling"
+}
+
 // Config holds the application configuration
 var Config templates.AppConfig
 
@@ -561,6 +570,11 @@ func GetTippingConfig(locationID string) (bool, float64, float64, bool) {
 	}
 
 	return tippingEnabled, minAmount, maxAmount, allowCustom
+}
+
+// IsSMSEnabled returns true if AWS SNS is configured for SMS receipts
+func IsSMSEnabled() bool {
+	return Config.AWSAccessKeyID != "" && Config.AWSSecretAccessKey != "" && Config.AWSRegion != ""
 }
 
 // GetConfigFields returns config fields with their metadata for template generation
