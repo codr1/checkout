@@ -25,19 +25,34 @@ type TerminalProcessingResult struct {
 
 // ProcessTerminalPayment handles all terminal-specific payment processing logic
 func ProcessTerminalPayment(w http.ResponseWriter, r *http.Request, intent *stripe.PaymentIntent, email string, summary templates.CartSummary) TerminalProcessingResult {
-	// Find an online terminal reader
-	selectedReaderID := findOnlineTerminalReader()
+	// Use the user's selected reader
+	selectedReaderID := services.AppState.SelectedReaderID
 	if selectedReaderID == "" {
-		utils.Error("payment", "No online Stripe Terminal reader found", "intent_id", intent.ID)
+		utils.Error("payment", "No terminal reader selected", "intent_id", intent.ID)
 		if renderErr := renderErrorModal(w, r,
-			"No online terminal reader available. Please check reader status or select a different payment method.",
+			"Please select a terminal reader before attempting payment.",
 			intent.ID); renderErr != nil {
-			utils.Error("payment", "Error rendering no reader available modal", "intent_id", intent.ID, "error", renderErr)
+			utils.Error("payment", "Error rendering no reader selected modal", "intent_id", intent.ID, "error", renderErr)
 		}
 		return TerminalProcessingResult{
 			Success:    false,
 			ShouldStop: true,
-			Message:    "No online terminal reader found",
+			Message:    "No terminal reader selected",
+		}
+	}
+
+	// Verify the selected reader is online
+	if !isReaderOnline(selectedReaderID) {
+		utils.Error("payment", "Selected terminal reader is not online", "reader_id", selectedReaderID, "intent_id", intent.ID)
+		if renderErr := renderErrorModal(w, r,
+			"The selected terminal reader is not online. Please check reader status or select a different reader.",
+			intent.ID); renderErr != nil {
+			utils.Error("payment", "Error rendering reader offline modal", "intent_id", intent.ID, "error", renderErr)
+		}
+		return TerminalProcessingResult{
+			Success:    false,
+			ShouldStop: true,
+			Message:    "Selected reader is offline",
 		}
 	}
 
@@ -63,19 +78,14 @@ func ProcessTerminalPayment(w http.ResponseWriter, r *http.Request, intent *stri
 	return handleTerminalActionResult(w, r, intent, selectedReaderID, processedReader, email, summary)
 }
 
-// findOnlineTerminalReader finds an online terminal reader
-func findOnlineTerminalReader() string {
-	if len(services.AppState.SiteStripeReaders) == 0 {
-		return ""
-	}
-
+// isReaderOnline checks if a specific reader ID is online
+func isReaderOnline(readerID string) bool {
 	for _, reader := range services.AppState.SiteStripeReaders {
-		if reader.Status == "online" {
-			utils.Debug("payment", "Selected online terminal reader", "reader_id", reader.ID, "label", reader.Label)
-			return reader.ID
+		if reader.ID == readerID && reader.Status == "online" {
+			return true
 		}
 	}
-	return ""
+	return false
 }
 
 // processPaymentOnTerminal processes payment intent on a terminal reader

@@ -257,6 +257,24 @@ All transactions are saved in CSV files compatible with QuickBooks:
 - Files are stored in the transactions directory specified in your config
 - Each transaction includes date, time, ID, item details, payment method, etc.
 
+## Data Storage
+
+The system stores transaction and customer information in organized files for accounting, audit, and troubleshooting purposes.
+
+### File Structure
+- `data/transactions/YYYY-MM-DD.csv` - Daily transaction records (QuickBooks compatible)
+- `data/transactions/receipts/receipts-YYYY-MM-DD.json` - Customer receipt requests (email/SMS delivery)
+- `data/transactions/updates/payment-updates-YYYY-MM-DD.json` - Payment events and system updates
+
+### What Gets Recorded
+**Transaction CSV**: Financial records including items purchased, amounts, payment method, and customer info if provided during checkout. Each transaction has a unique payment ID (like `pi_1234567890abcdef`).
+
+**Receipt JSON**: When customers request email or SMS receipts after payment, including delivery status. Correlated to transactions via the payment ID.
+
+**Updates JSON**: System events like Stripe collecting customer emails during QR payments, payment failures, and receipt delivery status changes. Also correlated via payment ID.
+
+All files are created daily and provide a complete audit trail for business reporting and troubleshooting payment issues.
+
 ## Troubleshooting
 
 ### Stripe Authentication Errors

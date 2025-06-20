@@ -252,8 +252,8 @@ func ReceiptInfoHandler(w http.ResponseWriter, r *http.Request) {
 			} else {
 				sentMethod = "email and SMS"
 			}
-		} else if sendError == nil {
-			sendError = smsError // Only set error if email didn't already fail
+		} else {
+			sendError = smsError // SMS failed but email succeeded, so overall status is partial failure
 		}
 	}
 

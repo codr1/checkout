@@ -687,6 +687,58 @@ func checkTerminalPaymentStatus(intentID string) PaymentStatusResult {
 		}
 	}
 
+	// IMPORTANT: For terminal payments, also check the reader action status
+	// Card declines often show up as failed reader actions before PaymentIntent status changes
+	terminalReader, readerErr := reader.Get(terminalState.ReaderID, nil)
+	if readerErr != nil {
+		utils.Debug("payment", "Could not fetch terminal reader for action check", "reader_id", terminalState.ReaderID, "error", readerErr)
+		// Continue with PaymentIntent-only logic as fallback
+	} else if terminalReader.Action != nil {
+		utils.Debug("payment", "Terminal reader action status", "reader_id", terminalState.ReaderID, "action_status", terminalReader.Action.Status)
+
+		// Use same pattern as payment_terminal.go for consistency
+		switch terminalReader.Action.Status {
+		case stripe.TerminalReaderActionStatusSucceeded:
+			// Reader succeeded but we need to verify the PaymentIntent status too
+			if intent.Status == stripe.PaymentIntentStatusSucceeded {
+				utils.Info("payment", "Terminal reader action and payment both succeeded", "intent_id", intentID)
+				return handleTerminalPaymentSuccess(intentID, terminalState, intent)
+			}
+
+		case stripe.TerminalReaderActionStatusFailed:
+			utils.Info("payment", "Terminal reader action failed (card declined)", "intent_id", intentID, "reader_id", terminalState.ReaderID)
+			// Create enhanced failure message using the failure details from the reader action
+			enhancedIntent := intent
+			if terminalReader.Action.FailureMessage != "" {
+				// Create a mock LastPaymentError with the terminal failure message for better UX
+				enhancedIntent = &stripe.PaymentIntent{
+					ID:     intent.ID,
+					Status: intent.Status,
+					LastPaymentError: &stripe.Error{
+						Msg: fmt.Sprintf("Terminal error: %s", terminalReader.Action.FailureMessage),
+					},
+				}
+			}
+			return handleTerminalPaymentFailure(intentID, enhancedIntent)
+
+		case stripe.TerminalReaderActionStatusInProgress:
+			// Still in progress, continue with PaymentIntent status checking below
+			utils.Debug("payment", "Terminal reader action still in progress", "intent_id", intentID)
+
+		default:
+			// Unknown reader action status - this is an error condition
+			utils.Error("payment", "Unknown terminal reader action status during polling", "status", terminalReader.Action.Status, "intent_id", intentID)
+			unknownStatusIntent := &stripe.PaymentIntent{
+				ID:     intent.ID,
+				Status: intent.Status,
+				LastPaymentError: &stripe.Error{
+					Msg: fmt.Sprintf("Unknown terminal status: %s", terminalReader.Action.Status),
+				},
+			}
+			return handleTerminalPaymentFailure(intentID, unknownStatusIntent)
+		}
+	}
+
 	// Check for various payment states
 	switch intent.Status {
 	case stripe.PaymentIntentStatusSucceeded:
@@ -953,6 +1005,7 @@ func GetPaymentStatusHandler(w http.ResponseWriter, r *http.Request) {
 // Used by both cancel buttons and timeout handling for consistent behavior
 func CancelOrRefreshPaymentHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
+		utils.Error("payment", "Error parsing form in cancel/refresh", "error", err)
 		http.Error(w, "Error parsing form", http.StatusBadRequest)
 		return
 	}
@@ -968,7 +1021,14 @@ func CancelOrRefreshPaymentHandler(w http.ResponseWriter, r *http.Request) {
 		paymentType = r.URL.Query().Get("type")
 	}
 
+	// Log all received parameters for debugging
+	utils.Debug("payment", "Cancel/refresh request received",
+		"payment_id", paymentID, "type", paymentType,
+		"form_values", r.Form, "query_params", r.URL.Query())
+
 	if paymentID == "" || paymentType == "" {
+		utils.Error("payment", "Missing required parameters in cancel/refresh",
+			"payment_id", paymentID, "type", paymentType)
 		http.Error(w, "payment_id and type parameters required", http.StatusBadRequest)
 		return
 	}

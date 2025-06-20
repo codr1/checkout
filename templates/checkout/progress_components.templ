@@ -173,7 +173,7 @@ templ TerminalPaymentContainer(paymentIntentID string, readerID string, totalAmo
 			PaymentType:    "terminal",
 			ExpireEndpoint: "/cancel-or-refresh-payment",
 			ExpireDelay:    config.PaymentExpireDelay,
-			IncludeFields:  "[name='payment_intent_id'], [name='reader_id']",
+			IncludeFields:  "",  // Use hx-vals instead of form fields for reliability
 			TargetElement:  "#terminal-payment-status-details",
 		})
 
