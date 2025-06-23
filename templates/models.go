@@ -154,3 +154,8 @@ type StripeReader struct {
 	IPAddress       string `json:"ip_address,omitempty"`
 	DeviceSwVersion string `json:"device_sw_version,omitempty"`
 }
+
+// LayoutContext represents shared UI state for layout templates
+type LayoutContext struct {
+	IsTestMode bool `json:"isTestMode"`
+}

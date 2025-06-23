@@ -1,8 +1,6 @@
 package templates
 
-import "checkout/types"
-
-templ Layout(title string, layoutCtx types.LayoutContext) {
+templ Layout(title string, layoutCtx LayoutContext) {
 	<!DOCTYPE html>
 	<html>
 	<head>
@@ -206,7 +204,7 @@ templ Layout(title string, layoutCtx types.LayoutContext) {
 }
 
 templ LoginPage() {
-	@Layout("POS Login", types.LayoutContext{}) {
+			@Layout("POS Login", LayoutContext{}) {
 		<div class="login-container">
 			<img src="/static/images/PicklePOS.png" alt="PicklePOS Logo" class="login-logo"/>
 			<h1>POS System Login</h1>
@@ -224,7 +222,7 @@ templ LoginPage() {
 }
 
 templ ConfigPage() {
-	@Layout("POS Configuration", types.LayoutContext{}) {
+			@Layout("POS Configuration", LayoutContext{}) {
 		<div class="config-container">
 			<h1>POS System Configuration</h1>
 			<form hx-post="/save-config" hx-swap="none">
