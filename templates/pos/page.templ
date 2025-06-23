@@ -2,12 +2,13 @@ package pos
 
 import (
 	"checkout/templates"
+	"checkout/services"
 	"fmt"
 )
 
 // POS main page
 templ Page(availableReaders []templates.StripeReader, selectedReaderID string) {
-	@templates.Layout("POS System") {
+	@templates.Layout("POS System", services.AppState.LayoutContext) {
 		<div class="top-bar-controls">
 			<div class="left-controls">
 				<div class="actions-menu">

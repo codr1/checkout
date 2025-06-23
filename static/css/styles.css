@@ -409,6 +409,16 @@ input[type="tel"]:focus {
   background-color: var(--brand);
 }
 
+/* Test mode banner */
+.test-mode-banner {
+  background-color: #2196F3;
+  color: white;
+  text-align: center;
+  padding: var(--space-sm);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
 /* Animations */
 @keyframes fadeIn {
   from {

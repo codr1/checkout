@@ -78,6 +78,14 @@ func init() {
 	}
 	utils.Info("startup", "Stripe API key validated successfully")
 
+	// Detect test mode from Stripe key and set in application state
+	services.AppState.LayoutContext.IsTestMode = strings.HasPrefix(stripe.Key, "sk_test_")
+	if services.AppState.LayoutContext.IsTestMode {
+		utils.Info("startup", "Running in Stripe test mode")
+	} else {
+		utils.Info("startup", "Running in Stripe live mode")
+	}
+
 	// Load services
 	if err := services.LoadServices(); err != nil {
 		utils.Error("startup", "Error loading services", "error", err)

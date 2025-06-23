@@ -2,6 +2,7 @@ package services
 
 import (
 	"checkout/templates"
+	"checkout/types"
 )
 
 // State holds application state
@@ -14,6 +15,9 @@ type State struct {
 	SelectedStripeLocation   templates.StripeLocation
 	SiteStripeReaders        []templates.StripeReader
 	SelectedReaderID         string // ID of the reader selected by the user
+
+	// Layout context for shared UI state
+	LayoutContext types.LayoutContext
 }
 
 // AppState is the global application state instance

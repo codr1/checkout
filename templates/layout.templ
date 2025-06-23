@@ -1,6 +1,8 @@
 package templates
 
-templ Layout(title string) {
+import "checkout/types"
+
+templ Layout(title string, layoutCtx types.LayoutContext) {
 	<!DOCTYPE html>
 	<html>
 	<head>
@@ -25,6 +27,13 @@ templ Layout(title string) {
 		<script src="/static/js/payment-countdown.js"></script>
 	</head>
 	<body>
+		<!-- Test Mode Banner -->
+		if layoutCtx.IsTestMode {
+			<div class="test-mode-banner">
+				⚠️ Stripe Testing Mode - No real payments will be processed
+			</div>
+		}
+		
 		<!-- Theme Toggle -->
 		<div id="theme-toggle" class="theme-toggle">
 			<button onclick="toggleTheme()" title="Toggle theme">
@@ -197,7 +206,7 @@ templ Layout(title string) {
 }
 
 templ LoginPage() {
-	@Layout("POS Login") {
+	@Layout("POS Login", types.LayoutContext{}) {
 		<div class="login-container">
 			<img src="/static/images/PicklePOS.png" alt="PicklePOS Logo" class="login-logo"/>
 			<h1>POS System Login</h1>
@@ -215,7 +224,7 @@ templ LoginPage() {
 }
 
 templ ConfigPage() {
-	@Layout("POS Configuration") {
+	@Layout("POS Configuration", types.LayoutContext{}) {
 		<div class="config-container">
 			<h1>POS System Configuration</h1>
 			<form hx-post="/save-config" hx-swap="none">
