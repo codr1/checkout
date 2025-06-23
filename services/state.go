@@ -6,8 +6,8 @@ import (
 
 // State holds application state
 type State struct {
-	Services    []templates.Service
-	CurrentCart []templates.Service
+	Products    []templates.Product
+	CurrentCart []templates.Product
 
 	// Stripe Terminal state
 	AvailableStripeLocations []templates.StripeLocation

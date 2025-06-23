@@ -24,7 +24,7 @@ func GetStripePublicKey() string {
 // EnsureServiceHasPriceID ensures the service has a valid Stripe Product ID and a valid default Price ID.
 // It validates existing IDs and creates new ones if they are missing or invalid.
 // It returns true if the service struct was updated.
-func EnsureServiceHasPriceID(service *templates.Service) (bool, error) {
+func EnsureServiceHasPriceID(service *templates.Product) (bool, error) {
 	originalStripeProductID := service.StripeProductID
 	originalPriceID := service.PriceID
 	var sErr *stripe.Error

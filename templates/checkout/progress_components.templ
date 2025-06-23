@@ -69,11 +69,7 @@ templ PaymentStatusArea(paymentType, paymentID, additionalInfo string) {
 	<div id={ paymentType + "-payment-status-details" }>
 		<div class={ fmt.Sprintf("payment-progress %s-progress", paymentType) }>
 			<h4>{ getPaymentTypeDisplay(paymentType) } in Progress</h4>
-			if paymentType == "qr" {
-				<p>Waiting for QR code scan...</p>
-			} else if paymentType == "terminal" {
-				<p>Please complete the transaction on the payment terminal</p>
-			}
+			<p>{ getPaymentStatusMessage(paymentType) }</p>
 			<p>Payment expires in <span id={ fmt.Sprintf("%s-countdown", paymentType) }>{ strconv.Itoa(config.GetPaymentTimeoutSeconds()) }</span> seconds</p>
 			<div class="progress-bar">
 				<div class="progress-fill" id={ fmt.Sprintf("%s-progress-fill", paymentType) } style="width: 0%;"></div>
@@ -191,6 +187,18 @@ func getPaymentTypeDisplay(paymentType string) string {
 		return "Terminal Payment"
 	default:
 		return "Payment"
+	}
+}
+
+// Helper function to get status message for payment type
+func getPaymentStatusMessage(paymentType string) string {
+	switch paymentType {
+	case "qr":
+		return "Waiting for QR code scan..."
+	case "terminal":
+		return "Please complete the transaction on the payment terminal"
+	default:
+		return "Processing payment..."
 	}
 }
 

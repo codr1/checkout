@@ -120,7 +120,7 @@ Settings can also be manually edited in the `./data/config.json` file when the a
 
 - `/data`: Contains configuration and data files
   - `/data/config.json`: Application configuration including tax rates
-  - `/data/services.json`: Product catalog with optional category assignments
+  - `/data/products.json`: Product catalog with optional category assignments
   - `/data/transactions`: Contains daily transaction CSV files
 - `/templates`: HTMX templates for the UI
 - `/static`: Static assets like CSS

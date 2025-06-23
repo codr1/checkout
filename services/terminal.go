@@ -16,7 +16,7 @@ import (
 
 // ShouldEnableTipping determines if tipping should be enabled for a given transaction
 // based on the global configuration, location overrides, transaction amount, and cart contents
-func ShouldEnableTipping(transactionAmount float64, cart []templates.Service, locationID string) bool {
+func ShouldEnableTipping(transactionAmount float64, cart []templates.Product, locationID string) bool {
 	// Check if tipping is globally disabled
 	if !config.Config.TippingEnabled {
 		// Check for location-specific override that enables tipping
@@ -45,13 +45,13 @@ func ShouldEnableTipping(transactionAmount float64, cart []templates.Service, lo
 		return false
 	}
 
-	// Check service category restrictions
-	if len(config.Config.TippingServiceCategoriesOnly) > 0 {
+	// Check product category restrictions
+	if len(config.Config.TippingProductCategoriesOnly) > 0 {
 		// Only enable tipping if at least one item in cart matches allowed categories
 		hasAllowedCategory := false
-		for _, service := range cart {
-			for _, allowedCategory := range config.Config.TippingServiceCategoriesOnly {
-				if service.Category == allowedCategory {
+		for _, product := range cart {
+			for _, allowedCategory := range config.Config.TippingProductCategoriesOnly {
+				if product.Category == allowedCategory {
 					hasAllowedCategory = true
 					break
 				}

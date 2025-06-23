@@ -13,9 +13,9 @@ import (
 	"checkout/utils"
 )
 
-// ServicesHandler renders the services list
-func ServicesHandler(w http.ResponseWriter, r *http.Request) {
-	component := pos.ServicesList(services.AppState.Services)
+// ProductsHandler renders the products list
+func ProductsHandler(w http.ResponseWriter, r *http.Request) {
+	component := pos.ProductsList(services.AppState.Products)
 	err := component.Render(r.Context(), w)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -53,9 +53,9 @@ func AddToCartHandler(w http.ResponseWriter, r *http.Request) {
 
 	serviceID := r.FormValue("id")
 
-	for _, service := range services.AppState.Services {
-		if service.ID == serviceID {
-			services.AppState.CurrentCart = append(services.AppState.CurrentCart, service)
+	for _, product := range services.AppState.Products {
+		if product.ID == serviceID {
+			services.AppState.CurrentCart = append(services.AppState.CurrentCart, product)
 			w.Header().Set("HX-Trigger", "cartUpdated")
 			return
 		}
@@ -64,8 +64,8 @@ func AddToCartHandler(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "Service not found", http.StatusNotFound)
 }
 
-// AddCustomServiceHandler adds a custom service to the cart
-func AddCustomServiceHandler(w http.ResponseWriter, r *http.Request) {
+// AddCustomProductHandler adds a custom product to the cart
+func AddCustomProductHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Error parsing form", http.StatusBadRequest)
 		return
@@ -82,7 +82,7 @@ func AddCustomServiceHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create custom service
-	customService := templates.Service{
+	customProduct := templates.Product{
 		ID:          fmt.Sprintf("custom-%d", time.Now().UnixNano()),
 		Name:        name,
 		Description: description,
@@ -90,7 +90,7 @@ func AddCustomServiceHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add to cart
-	services.AppState.CurrentCart = append(services.AppState.CurrentCart, customService)
+	services.AppState.CurrentCart = append(services.AppState.CurrentCart, customProduct)
 	w.Header().Set("HX-Trigger", "cartUpdated")
 }
 

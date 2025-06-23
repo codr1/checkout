@@ -362,7 +362,7 @@ func promptForConfig() error {
 	Config.TippingMaxAmount = 0.0                           // No maximum by default (0 = unlimited)
 	Config.TippingPresetPercentages = []int{15, 18, 20, 25} // Common preset percentages
 	Config.TippingAllowCustomAmount = true                  // Allow custom amounts by default
-	Config.TippingServiceCategoriesOnly = []string{}        // Empty = all categories
+	Config.TippingProductCategoriesOnly = []string{}        // Empty = all categories
 
 	if Config.TippingEnabled {
 		fmt.Print("Minimum transaction amount for tipping (in dollars, 0 for no minimum): ")

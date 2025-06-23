@@ -228,7 +228,7 @@ func handleTerminalInProgress(w http.ResponseWriter, r *http.Request, intent *st
 		ReaderID:        selectedReaderID,
 		StartTime:       time.Now(),
 		Email:           email,
-		Cart:            make([]templates.Service, len(services.AppState.CurrentCart)),
+		Cart:            make([]templates.Product, len(services.AppState.CurrentCart)),
 		Summary:         summary,
 	}
 	copy(terminalState.Cart, services.AppState.CurrentCart)

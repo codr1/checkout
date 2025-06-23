@@ -180,7 +180,7 @@ func ProcessPaymentHandler(w http.ResponseWriter, r *http.Request) {
 		)
 
 		// Clear cart
-		services.AppState.CurrentCart = []templates.Service{}
+		services.AppState.CurrentCart = []templates.Product{}
 
 		// Show success modal (always show receipt form)
 		if renderErr := renderSuccessModal(w, r, intent.ID, false); renderErr != nil {

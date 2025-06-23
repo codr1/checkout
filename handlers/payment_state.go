@@ -125,7 +125,7 @@ func (psm *PaymentStateManager) RemovePaymentAndClearCart(id string) {
 	delete(psm.states, id)
 
 	// Clear the cart since the transaction is complete/cancelled
-	services.AppState.CurrentCart = []templates.Service{}
+	services.AppState.CurrentCart = []templates.Product{}
 
 	// DEBUG: Log cart state after clearing
 	utils.Debug("payment", "Removed payment state and cleared cart", "payment_id", id, "cart_items_after", len(services.AppState.CurrentCart))
@@ -141,7 +141,7 @@ func (psm *PaymentStateManager) ClearAllAndClearCart() {
 	psm.states = make(map[string]PaymentState)
 
 	// Clear the cart since all transactions are being reset
-	services.AppState.CurrentCart = []templates.Service{}
+	services.AppState.CurrentCart = []templates.Product{}
 
 	utils.Info("payment", "Cleared all payment states and cart")
 }
@@ -161,7 +161,7 @@ func (psm *PaymentStateManager) ClearByTypeAndClearCart(paymentType string) {
 	}
 	// Clear the cart if any payments were removed
 	if removedCount > 0 {
-		services.AppState.CurrentCart = []templates.Service{}
+		services.AppState.CurrentCart = []templates.Product{}
 		utils.Info("payment", "Removed payment states by type and cleared cart", "payment_type", paymentType, "removed_count", removedCount)
 	}
 }
@@ -206,7 +206,7 @@ type TerminalPaymentState struct {
 	ReaderID        string
 	StartTime       time.Time
 	Email           string
-	Cart            []templates.Service
+	Cart            []templates.Product
 	Summary         templates.CartSummary
 }
 
@@ -256,21 +256,25 @@ const (
 type PaymentEventLogger struct{}
 
 // LogPaymentEvent logs a payment event with standardized transaction creation
-func (pel *PaymentEventLogger) LogPaymentEvent(paymentID string, eventType PaymentEventType, paymentMethod string, cart []templates.Service, summary templates.CartSummary, email string) error {
+func (pel *PaymentEventLogger) LogPaymentEvent(paymentID string, eventType PaymentEventType, paymentMethod string, cart []templates.Product, summary templates.CartSummary, email string) error {
 	now := time.Now()
 
 	// Create standardized payment type string
 	paymentTypeStr := pel.getPaymentTypeString(paymentMethod, eventType)
 
+	// Calculate per-item taxes for the cart
+	_, itemTaxes := services.CalculateCartSummaryWithItemTaxes()
+
 	transaction := templates.Transaction{
-		ID:          paymentID,
-		Date:        now.Format("01/02/2006"),
-		Time:        now.Format("15:04:05"),
-		Services:    cart,
-		Subtotal:    summary.Subtotal,
-		Tax:         summary.Tax,
-		Total:       summary.Total,
-		PaymentType: paymentTypeStr,
+		ID:           paymentID,
+		Date:         now.Format("01/02/2006"),
+		Time:         now.Format("15:04:05"),
+		Products:     cart,
+		ProductTaxes: itemTaxes, // Store individual tax amounts
+		Subtotal:     summary.Subtotal,
+		Tax:          summary.Tax,
+		Total:        summary.Total,
+		PaymentType:  paymentTypeStr,
 		// StripeCustomerEmail will be tracked separately via payment update records
 	}
 
@@ -286,7 +290,7 @@ func (pel *PaymentEventLogger) LogPaymentEvent(paymentID string, eventType Payme
 
 // LogPaymentEventFromState logs a payment event using payment state data
 func (pel *PaymentEventLogger) LogPaymentEventFromState(state PaymentState, eventType PaymentEventType, email string) error {
-	var cart []templates.Service
+	var cart []templates.Product
 	var summary templates.CartSummary
 	var paymentMethod string
 
@@ -319,7 +323,7 @@ func (pel *PaymentEventLogger) LogPaymentEventFromState(state PaymentState, even
 }
 
 // LogPaymentEventWithStripeEmail logs a payment event including Stripe-collected customer info
-func (pel *PaymentEventLogger) LogPaymentEventWithStripeEmail(paymentID string, eventType PaymentEventType, paymentMethod string, cart []templates.Service, summary templates.CartSummary, email string, stripeEmail string) error {
+func (pel *PaymentEventLogger) LogPaymentEventWithStripeEmail(paymentID string, eventType PaymentEventType, paymentMethod string, cart []templates.Product, summary templates.CartSummary, email string, stripeEmail string) error {
 	// First log the standard transaction
 	if err := pel.LogPaymentEvent(paymentID, eventType, paymentMethod, cart, summary, email); err != nil {
 		return err
@@ -335,7 +339,7 @@ func (pel *PaymentEventLogger) LogPaymentEventWithStripeEmail(paymentID string, 
 
 // LogPaymentEventQuick logs a simple payment event (for failures/cancellations without detailed cart data)
 func (pel *PaymentEventLogger) LogPaymentEventQuick(paymentID string, eventType PaymentEventType, paymentMethod string) error {
-	return pel.LogPaymentEvent(paymentID, eventType, paymentMethod, []templates.Service{}, templates.CartSummary{}, "")
+	return pel.LogPaymentEvent(paymentID, eventType, paymentMethod, []templates.Product{}, templates.CartSummary{}, "")
 }
 
 // getPaymentTypeString creates a standardized payment type string

@@ -148,7 +148,7 @@ func handleManualPaymentSuccess(w http.ResponseWriter, r *http.Request, intent *
 	)
 
 	// Clear cart
-	services.AppState.CurrentCart = []templates.Service{}
+	services.AppState.CurrentCart = []templates.Product{}
 
 	// Render success modal (always show receipt form)
 	if err := renderSuccessModal(w, r, intent.ID, false); err != nil {

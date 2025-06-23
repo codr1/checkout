@@ -87,7 +87,7 @@ func init() {
 	}
 
 	// Load services
-	if err := services.LoadServices(); err != nil {
+	if err := services.LoadProducts(); err != nil {
 		utils.Error("startup", "Error loading services", "error", err)
 		return
 	}
@@ -240,11 +240,11 @@ func main() {
 	appMux := http.NewServeMux()
 
 	// API routes (protected)
-	appMux.HandleFunc("/services", handlers.ServicesHandler)
+	appMux.HandleFunc("/products", handlers.ProductsHandler)
 	appMux.HandleFunc("/cart", handlers.CartHandler)
 	appMux.HandleFunc("/checkout-form", handlers.CheckoutFormHandler)
 	appMux.HandleFunc("/add-to-cart", handlers.AddToCartHandler)
-	appMux.HandleFunc("/add-custom-service", handlers.AddCustomServiceHandler)
+	appMux.HandleFunc("/add-custom-product", handlers.AddCustomProductHandler)
 	appMux.HandleFunc("/remove-from-cart", handlers.RemoveFromCartHandler)
 	appMux.HandleFunc("/process-payment", handlers.ProcessPaymentHandler)
 	appMux.HandleFunc("/generate-qr-code", handlers.GenerateQRCodeHandler)

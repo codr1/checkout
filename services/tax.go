@@ -7,41 +7,43 @@ import (
 
 // Calculate cart summary using local tax rates
 func CalculateCartSummary() templates.CartSummary {
-	var subtotal float64
-	for _, service := range AppState.CurrentCart {
-		subtotal += service.Price
-	}
-
-	// Calculate tax using local tax rates
-	tax := calculateLocalTaxes()
-	total := subtotal + tax
-
-	return templates.CartSummary{
-		Subtotal: subtotal,
-		Tax:      tax,
-		Total:    total,
-	}
+	summary, _ := CalculateCartSummaryWithItemTaxes()
+	return summary
 }
 
-// calculateLocalTaxes calculates taxes for the current cart using local tax rates
-func calculateLocalTaxes() float64 {
-	if len(AppState.CurrentCart) == 0 {
-		return 0
+// CalculateCartSummaryWithItemTaxes calculates cart summary and returns per-item tax amounts
+func CalculateCartSummaryWithItemTaxes() (templates.CartSummary, []float64) {
+	var subtotal float64
+	var itemTaxes []float64
+
+	for _, product := range AppState.CurrentCart {
+		subtotal += product.Price
+
+		// Calculate tax for this specific product
+		taxRate := GetTaxRateForService(product)
+		tax := product.Price * taxRate
+		itemTaxes = append(itemTaxes, tax)
 	}
 
+	// Calculate total tax by summing individual taxes
 	var totalTax float64
-
-	for _, service := range AppState.CurrentCart {
-		taxRate := GetTaxRateForService(service)
-		tax := service.Price * taxRate
+	for _, tax := range itemTaxes {
 		totalTax += tax
 	}
 
-	return totalTax
+	total := subtotal + totalTax
+
+	summary := templates.CartSummary{
+		Subtotal: subtotal,
+		Tax:      totalTax,
+		Total:    total,
+	}
+
+	return summary, itemTaxes
 }
 
 // GetTaxRateForService returns the applicable tax rate for a service
-func GetTaxRateForService(service templates.Service) float64 {
+func GetTaxRateForService(service templates.Product) float64 {
 	// If service has a category, look up the category tax rate
 	if service.Category != "" {
 		for _, category := range config.Config.TaxCategories {

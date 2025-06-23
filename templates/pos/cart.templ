@@ -6,7 +6,7 @@ import (
 )
 
 // Cart view component
-templ CartView(items []templates.Service, summary templates.CartSummary) {
+templ CartView(items []templates.Product, summary templates.CartSummary) {
 	<div>
 		if len(items) == 0 {
 			<p>Cart is empty</p>

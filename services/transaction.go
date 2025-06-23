@@ -58,8 +58,8 @@ func SaveTransactionToCSV(transaction templates.Transaction) error {
 		}
 	}
 
-	// For payment link events without services (like cancellations or expirations)
-	if len(transaction.Services) == 0 && transaction.PaymentLinkID != "" {
+	// For payment link events without products (like cancellations or expirations)
+	if len(transaction.Products) == 0 && transaction.PaymentLinkID != "" {
 		record := []string{
 			transaction.Date,
 			transaction.Time,
@@ -85,32 +85,28 @@ func SaveTransactionToCSV(transaction templates.Transaction) error {
 		return nil
 	}
 
-	// Write each service as a separate line
-	for _, service := range transaction.Services {
-		// Calculate tax and total for this service
-		var tax, total float64
+	// Write each product as a separate line
+	for i, product := range transaction.Products {
+		// Use the stored tax amount for this product
+		var tax float64
 
-		// If we have calculated tax
-		if transaction.Tax > 0 && transaction.Subtotal > 0 {
-			// Distribute the tax proportionally based on this service's price
-			taxRate := transaction.Tax / transaction.Subtotal
-			tax = service.Price * taxRate
-			total = service.Price + tax
+		if i < len(transaction.ProductTaxes) {
+			tax = transaction.ProductTaxes[i]
 		} else {
-			// Fallback
-			const taxRate = 0.0625 // Temporary
-			tax = service.Price * taxRate
-			total = service.Price + tax
+			// This shouldn't happen if taxes have been configured
+			tax = 0
 		}
+
+		total := product.Price + tax
 
 		record := []string{
 			transaction.Date,
 			transaction.Time,
 			transaction.ID,
-			service.Name,
-			service.Description,
+			product.Name,
+			product.Description,
 			"1", // Quantity
-			fmt.Sprintf("%.2f", service.Price),
+			fmt.Sprintf("%.2f", product.Price),
 			fmt.Sprintf("%.2f", tax),
 			fmt.Sprintf("%.2f", total),
 			transaction.PaymentType,
@@ -129,44 +125,44 @@ func SaveTransactionToCSV(transaction templates.Transaction) error {
 	return nil
 }
 
-// LoadServices loads services from the JSON file
-func LoadServices() error {
-	utils.Info("services", "Loading services")
+// LoadProducts loads products from the JSON file
+func LoadProducts() error {
+	utils.Info("products", "Loading products")
 
 	// Use data directory from config or fallback to constant
 	dataDir := config.Config.DataDir
 	if dataDir == "" {
 		dataDir = "./data"
 	}
-	servicesFilePath := filepath.Join(dataDir, "services.json")
+	productsFilePath := filepath.Join(dataDir, "products.json")
 
-	// Check if services file exists
-	if _, err := os.Stat(servicesFilePath); os.IsNotExist(err) {
-		utils.Error("services", "No services defined", "error", "services.json file not found")
-		AppState.Services = []templates.Service{} // Initialize empty services
-		return fmt.Errorf("no services defined: services.json file not found")
+	// Check if products file exists
+	if _, err := os.Stat(productsFilePath); os.IsNotExist(err) {
+		utils.Error("products", "No products defined", "error", "products.json file not found")
+		AppState.Products = []templates.Product{} // Initialize empty products
+		return fmt.Errorf("no products defined: products.json file not found")
 	}
 
-	// Read existing services
-	data, err := os.ReadFile(servicesFilePath)
+	// Read existing products
+	data, err := os.ReadFile(productsFilePath)
 	if err != nil {
-		return fmt.Errorf("error reading services: %w", err)
+		return fmt.Errorf("error reading products: %w", err)
 	}
 
-	var services []templates.Service
-	if err := json.Unmarshal(data, &services); err != nil {
-		return fmt.Errorf("error parsing services: %w", err)
+	var products []templates.Product
+	if err := json.Unmarshal(data, &products); err != nil {
+		return fmt.Errorf("error parsing products: %w", err)
 	}
 
-	// Ensure each service has a Stripe Product ID and a default Price ID.
-	// Update the services.json file if any changes were made.
+	// Ensure each product has a Stripe Product ID and a default Price ID.
+	// Update the products.json file if any changes were made.
 	var actualUpdatesMade bool // Correctly named flag
-	for i := range services {
+	for i := range products {
 		// Assuming EnsureServiceHasPriceID is the one from services/stripe.go
 		// which now returns (bool, error)
-		updated, err := EnsureServiceHasPriceID(&services[i])
+		updated, err := EnsureServiceHasPriceID(&products[i])
 		if err != nil {
-			utils.Error("services", "Error ensuring Stripe IDs", "service", services[i].Name, "id", services[i].ID, "error", err)
+			utils.Error("products", "Error ensuring Stripe IDs", "product", products[i].Name, "id", products[i].ID, "error", err)
 		}
 		if updated {
 			actualUpdatesMade = true
@@ -174,52 +170,52 @@ func LoadServices() error {
 	}
 
 	if actualUpdatesMade {
-		utils.Debug("services", "Services updated with Stripe IDs, saving changes")
-		for _, s := range services { // Log current state of all services before saving
-			utils.Debug("services", "Before SaveServices", "service", s.Name, "id", s.ID, "stripe_product_id", s.StripeProductID, "price_id", s.PriceID)
+		utils.Debug("products", "Products updated with Stripe IDs, saving changes")
+		for _, p := range products { // Log current state of all products before saving
+			utils.Debug("products", "Before SaveServices", "product", p.Name, "id", p.ID, "stripe_product_id", p.StripeProductID, "price_id", p.PriceID)
 		}
-		if err := SaveServices(services); err != nil {
-			return fmt.Errorf("error saving updated services to services.json: %w", err)
+		if err := SaveProducts(products); err != nil {
+			return fmt.Errorf("error saving updated products to products.json: %w", err)
 		}
-		utils.Debug("services", "Successfully saved services.json with updated Stripe IDs")
+		utils.Debug("products", "Successfully saved products.json with updated Stripe IDs")
 	}
 
-	// Log the state of services before assigning to AppState
-	for _, s := range services {
-		utils.Debug("services", "Before AppState assignment", "service", s.Name, "id", s.ID, "stripe_product_id", s.StripeProductID, "price_id", s.PriceID)
+	// Log the state of products before assigning to AppState
+	for _, p := range products {
+		utils.Debug("products", "Before AppState assignment", "product", p.Name, "id", p.ID, "stripe_product_id", p.StripeProductID, "price_id", p.PriceID)
 	}
-	AppState.Services = services
-	utils.Debug("services", "Finished LoadServices, AppState.Services populated")
-	// Log the state of AppState.Services after assignment
-	for _, s_app := range AppState.Services {
-		utils.Debug("services", "After AppState assignment", "service", s_app.Name, "id", s_app.ID, "stripe_product_id", s_app.StripeProductID, "price_id", s_app.PriceID)
+	AppState.Products = products
+	utils.Debug("products", "Finished LoadServices, AppState.Products populated")
+	// Log the state of AppState.Products after assignment
+	for _, p_app := range AppState.Products {
+		utils.Debug("products", "After AppState assignment", "product", p_app.Name, "id", p_app.ID, "stripe_product_id", p_app.StripeProductID, "price_id", p_app.PriceID)
 	}
 	return nil
 }
 
-// SaveServices saves the services to the JSON file
-func SaveServices(services []templates.Service) error {
+// SaveProducts saves the products to the JSON file
+func SaveProducts(products []templates.Product) error {
 	// Use data directory from config or fallback to constant
 	dataDir := config.Config.DataDir
 	if dataDir == "" {
 		dataDir = "./data"
 	}
-	servicesFilePath := filepath.Join(dataDir, "services.json")
+	productsFilePath := filepath.Join(dataDir, "products.json")
 
 	// Ensure the directory exists
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return fmt.Errorf("error creating data directory: %w", err)
 	}
 
-	// Marshal the services to JSON
-	jsonData, err := json.MarshalIndent(services, "", "  ")
+	// Marshal the products to JSON
+	jsonData, err := json.MarshalIndent(products, "", "  ")
 	if err != nil {
-		return fmt.Errorf("error marshaling services: %w", err)
+		return fmt.Errorf("error marshaling products: %w", err)
 	}
 
 	// Write the JSON to file
-	if err := os.WriteFile(servicesFilePath, jsonData, 0644); err != nil {
-		return fmt.Errorf("error writing services file: %w", err)
+	if err := os.WriteFile(productsFilePath, jsonData, 0644); err != nil {
+		return fmt.Errorf("error writing products file: %w", err)
 	}
 
 	return nil

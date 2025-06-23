@@ -13,12 +13,12 @@ body {
   display: flex;
 }
 
-.services-section,
+.products-section,
 .cart-section {
   flex: 1;
 }
 
-.services-section {
+.products-section {
   border-right: 1px solid var(--surface-4);
   padding-right: var(--space-lg);
 }
@@ -27,8 +27,8 @@ body {
   padding-left: var(--space-lg);
 }
 
-/* Service items */
-.service-item {
+/* Product items */
+.product-item {
   border: 1px solid var(--surface-4);
   padding: var(--space-md);
   margin-bottom: var(--space-md);
@@ -39,7 +39,7 @@ body {
   transition: all var(--transition-fast);
 }
 
-.service-item:hover {
+.product-item:hover {
   background-color: var(--surface-3);
   border-color: var(--brand);
   box-shadow: var(--shadow-sm);
@@ -213,8 +213,8 @@ input[type="tel"]:focus {
   height: 20px;
 }
 
-/* Custom service form */
-.custom-service {
+/* Custom product form */
+.custom-product {
   margin-top: var(--space-lg);
   padding: var(--space-md);
   border: 1px solid var(--surface-4);
@@ -222,19 +222,19 @@ input[type="tel"]:focus {
   background-color: var(--surface-1);
 }
 
-.custom-service input,
-.custom-service button {
+.custom-product input,
+.custom-product button {
   margin-top: var(--space-md);
   padding: var(--space-sm);
 }
 
-.custom-service button {
+.custom-product button {
   background-color: var(--brand);
   color: var(--surface-1);
   border: none;
 }
 
-.custom-service button:hover {
+.custom-product button:hover {
   background-color: var(--brand-hover);
 }
 

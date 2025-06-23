@@ -1,7 +1,7 @@
 package templates
 
-// Service represents a service item that can be sold
-type Service struct {
+// Product represents a product item that can be sold
+type Product struct {
 	ID              string  `json:"id"`
 	Name            string  `json:"name"`
 	Description     string  `json:"description"`
@@ -23,7 +23,8 @@ type Transaction struct {
 	ID            string    `json:"id"`
 	Date          string    `json:"date"`
 	Time          string    `json:"time"`
-	Services      []Service `json:"services"`
+	Products      []Product `json:"products"`
+	ProductTaxes  []float64 `json:"productTaxes"` // Tax amount per product (same order as Products)
 	Subtotal      float64   `json:"subtotal"`
 	Tax           float64   `json:"tax"`
 	Total         float64   `json:"total"`
@@ -131,7 +132,7 @@ type AppConfig struct {
 	// Complex tipping fields (hidden from simple settings UI)
 	TippingLocationOverrides     map[string]bool `json:"tippingLocationOverrides" setting:"-"`     // Per-location tipping overrides (locationID -> enabled)
 	TippingPresetPercentages     []int           `json:"tippingPresetPercentages" setting:"-"`     // Preset tip percentages (e.g., [15, 18, 20, 25])
-	TippingServiceCategoriesOnly []string        `json:"tippingServiceCategoriesOnly" setting:"-"` // Only show tipping for specific service categories (empty = all)
+	TippingProductCategoriesOnly []string        `json:"tippingProductCategoriesOnly" setting:"-"` // Only show tipping for specific product categories (empty = all)
 }
 
 // StripeLocation represents a Stripe Terminal Location.
