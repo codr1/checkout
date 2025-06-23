@@ -22,13 +22,24 @@ func ProductsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// CartHandler renders the cart contents
-func CartHandler(w http.ResponseWriter, r *http.Request) {
-	utils.Debug("cart", "CartHandler called", "cart_items", len(services.AppState.CurrentCart))
+// CartItemsHandler renders only the cart items (for scrollable area)
+func CartItemsHandler(w http.ResponseWriter, r *http.Request) {
+	utils.Debug("cart", "CartItemsHandler called", "cart_items", len(services.AppState.CurrentCart))
+
+	component := pos.CartItems(services.AppState.CurrentCart)
+	err := component.Render(r.Context(), w)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// CartSummaryHandler renders only the cart summary (for fixed bottom area)
+func CartSummaryHandler(w http.ResponseWriter, r *http.Request) {
+	utils.Debug("cart", "CartSummaryHandler called", "cart_items", len(services.AppState.CurrentCart))
 
 	summary := services.CalculateCartSummary()
 
-	component := pos.CartView(services.AppState.CurrentCart, summary)
+	component := pos.CartSummary(summary)
 	err := component.Render(r.Context(), w)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -56,7 +67,7 @@ func AddToCartHandler(w http.ResponseWriter, r *http.Request) {
 	for _, product := range services.AppState.Products {
 		if product.ID == serviceID {
 			services.AppState.CurrentCart = append(services.AppState.CurrentCart, product)
-			w.Header().Set("HX-Trigger", "cartUpdated")
+			w.Header().Set("HX-Trigger", `{"cartUpdated": true, "scrollCartToBottom": true}`)
 			return
 		}
 	}
@@ -91,7 +102,7 @@ func AddCustomProductHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Add to cart
 	services.AppState.CurrentCart = append(services.AppState.CurrentCart, customProduct)
-	w.Header().Set("HX-Trigger", "cartUpdated")
+	w.Header().Set("HX-Trigger", `{"cartUpdated": true, "scrollCartToBottom": true}`)
 }
 
 // RemoveFromCartHandler removes an item from the cart

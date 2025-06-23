@@ -5,11 +5,11 @@ import (
 	"checkout/templates"
 )
 
-// Cart view component
-templ CartView(items []templates.Product, summary templates.CartSummary) {
-	<div>
+// Cart items component (for scrollable area)
+templ CartItems(items []templates.Product) {
+	<div id="cart-items-container">
 		if len(items) == 0 {
-			<p>Cart is empty</p>
+			<p class="empty-cart-message">Cart is empty</p>
 		} else {
 			for i, item := range items {
 				<div class="cart-item">
@@ -27,13 +27,16 @@ templ CartView(items []templates.Product, summary templates.CartSummary) {
 					</div>
 				</div>
 			}
-			
-			<div class="total-section">
-				<p>Subtotal: ${ FormatPrice(summary.Subtotal) }</p>
-				<p>Tax (6.25%): ${ FormatPrice(summary.Tax) }</p>
-				<p>Total: ${ FormatPrice(summary.Total) }</p>
-			</div>
 		}
+	</div>
+}
+
+// Cart summary component (for fixed bottom area)
+templ CartSummary(summary templates.CartSummary) {
+	<div class="cart-summary">
+		<p>Subtotal: ${ FormatPrice(summary.Subtotal) }</p>
+		<p>Tax (6.25%): ${ FormatPrice(summary.Tax) }</p>
+		<p class="total-amount">Total: ${ FormatPrice(summary.Total) }</p>
 	</div>
 }
 

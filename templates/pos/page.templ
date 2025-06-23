@@ -71,15 +71,15 @@ templ Page(availableReaders []templates.StripeReader, selectedReaderID string) {
 		</div>
 
 		<div class="container">
-					<div class="products-section">
-			<h3>Products</h3>
-			<div hx-get="/products" hx-trigger="load"></div>
+			<div class="products-section">
+				<h3>Products</h3>
+				<div hx-get="/products" hx-trigger="load"></div>
 
-			<div class="custom-product">
-				<h3>Custom Product</h3>
-				<form hx-post="/add-custom-product" hx-swap="none">
-					<div>
-						<input type="text" name="name" placeholder="Product name" required/>
+				<div class="custom-product">
+					<h3>Custom Product</h3>
+					<form hx-post="/add-custom-product" hx-swap="none">
+						<div>
+							<input type="text" name="name" placeholder="Product name" required/>
 						</div>
 						<div>
 							<input type="text" name="description" placeholder="Description"/>
@@ -94,10 +94,19 @@ templ Page(availableReaders []templates.StripeReader, selectedReaderID string) {
 			
 			<div class="cart-section">
 				<h3>Current Cart</h3>
-				<div hx-get="/cart" hx-trigger="load, cartUpdated from:body"></div>
 				
-				<div hx-get="/checkout-form" hx-trigger="load"></div>
+				<!-- Scrollable cart items area -->
+				<div class="cart-items-scroll-area" hx-get="/cart-items" hx-trigger="load, cartUpdated from:body"></div>
 				
+				<!-- Fixed bottom checkout area -->
+				<div class="cart-bottom-fixed">
+					<!-- Cart summary -->
+					<div hx-get="/cart-summary" hx-trigger="load, cartUpdated from:body"></div>
+					
+					<!-- Checkout form -->
+					<div hx-get="/checkout-form" hx-trigger="load"></div>
+					
+					<!-- Cancel button -->
 					<button 
 						class="cancel-transaction-btn" 
 						hx-post="/cancel-transaction" 
@@ -105,6 +114,7 @@ templ Page(availableReaders []templates.StripeReader, selectedReaderID string) {
 						hx-confirm="Are you sure you want to cancel this transaction? This will clear your cart.">
 						Cancel Transaction
 					</button>
+				</div>
 			</div>
 		</div>
 	}

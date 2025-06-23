@@ -107,10 +107,19 @@ templ Layout(title string, layoutCtx LayoutContext) {
 			// Close dropdown when clicking outside
 			document.addEventListener('click', function(event) {
 				const actionsMenu = document.querySelector('.actions-menu');
-				const dropdown = document.getElementById('actionsDropdown');
 				
 				if (actionsMenu && !actionsMenu.contains(event.target)) {
-					dropdown.classList.remove('show');
+					document.getElementById('actionsDropdown').classList.remove('show');
+				}
+			});
+			
+			// Auto-scroll cart to bottom when new items are added
+			document.body.addEventListener('scrollCartToBottom', function() {
+				const cartScrollArea = document.querySelector('.cart-items-scroll-area');
+				if (cartScrollArea) {
+					setTimeout(function() {
+						cartScrollArea.scrollTop = cartScrollArea.scrollHeight;
+					}, 100); // Small delay to ensure DOM is updated
 				}
 			});
 			

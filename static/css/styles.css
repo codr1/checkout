@@ -6,11 +6,14 @@ body {
   padding: var(--space-lg);
   background-color: var(--surface-2);
   color: var(--text-1);
+  height: 100vh;
+  overflow: hidden; /* Prevent body scroll */
 }
 
 /* Layout */
 .container {
   display: flex;
+  height: calc(100vh - 160px); /* Account for top bar, padding, and some buffer */
 }
 
 .products-section,
@@ -23,8 +26,65 @@ body {
   padding-right: var(--space-lg);
 }
 
+.products-section h3 {
+  margin-top: 0;
+  margin-bottom: var(--space-md);
+}
+
 .cart-section {
   padding-left: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0; /* Important for flex children to shrink */
+}
+
+/* Cart section layout */
+.cart-section h3 {
+  margin-top: 0;
+  margin-bottom: var(--space-md);
+  flex-shrink: 0;
+}
+
+.cart-items-scroll-area {
+  flex: 1;
+  min-height: 0; /* Important for flex children to shrink */
+  overflow-y: auto;
+  padding-right: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+.cart-bottom-fixed {
+  flex-shrink: 0;
+  border-top: 2px solid var(--surface-4);
+  padding-top: var(--space-md);
+  background-color: var(--surface-2);
+  max-height: 40vh; /* Prevent bottom area from taking too much space */
+  overflow-y: auto; /* Allow bottom area to scroll if needed */
+}
+
+.empty-cart-message {
+  text-align: center;
+  color: var(--text-2);
+  font-style: italic;
+  padding: var(--space-xl);
+}
+
+/* Cart summary */
+.cart-summary {
+  background-color: var(--surface-1);
+  padding: var(--space-md);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--surface-4);
+  margin-bottom: var(--space-md);
+}
+
+.cart-summary .total-amount {
+  font-size: var(--text-lg);
+  font-weight: bold;
+  border-top: 1px solid var(--surface-4);
+  padding-top: var(--space-sm);
+  margin-top: var(--space-sm);
 }
 
 /* Product items */
@@ -53,17 +113,7 @@ body {
   border-bottom: 1px solid var(--surface-4);
   background-color: var(--surface-1);
   color: var(--text-1);
-}
-
-.total-section {
-  margin-top: var(--space-lg);
-  font-size: var(--text-lg);
-  font-weight: bold;
-  color: var(--text-1);
-  background-color: var(--surface-1);
-  padding: var(--space-md);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--surface-4);
+  margin-bottom: 10px;
 }
 
 /* Button styles */
@@ -78,10 +128,9 @@ button {
   transition: all var(--transition-fast);
 }
 
-.checkout-btn .cancel-btn {
-  padding: var(--space-lg) var(--space-xl);
+.checkout-btn {
+  padding: var(--space-lg) var(--space-lg);
   font-size: var(--text-lg);
-  margin-top: var(--space-md);
   border-radius: var(--radius-md);
 }
 
@@ -97,6 +146,8 @@ button {
 }
 
 .cancel-btn {
+  padding: var(--space-lg) var(--space-lg);
+  font-size: var(--text-lg);
   background-color: var(--surface-3);
   color: var(--text-1);
   border: 1px solid var(--surface-4);
@@ -563,11 +614,11 @@ button[hx-post*="cancel-or-refresh-payment"] {
   color: var(--surface-1) !important;
   margin-top: var(--space-md);
   width: 100%;
-  padding: var(--space-md) var(--space-lg);
+  padding: var(--space-lg) var(--space-lg);
   border: none;
   border-radius: var(--radius-md);
   cursor: pointer;
-  font-size: var(--text-base);
+  font-size: var(--text-lg);
   font-weight: bold;
   transition: background-color var(--transition-fast);
 }
