@@ -19,16 +19,19 @@ body {
 .products-section,
 .cart-section {
   flex: 1;
+  min-width: 0; /* Allow flex items to shrink below content size */
 }
 
 .products-section {
   border-right: 1px solid var(--surface-4);
   padding-right: var(--space-lg);
+  overflow-y: auto; /* Make products scrollable when needed */
 }
 
 .products-section h3 {
   margin-top: 0;
   margin-bottom: var(--space-md);
+  flex-shrink: 0; /* Keep heading visible */
 }
 
 .cart-section {
@@ -37,6 +40,7 @@ body {
   flex-direction: column;
   height: 100%;
   min-height: 0; /* Important for flex children to shrink */
+  flex-shrink: 2; /* Shrink cart section more aggressively than products */
 }
 
 /* Cart section layout */
@@ -48,7 +52,8 @@ body {
 
 .cart-items-scroll-area {
   flex: 1;
-  min-height: 0; /* Important for flex children to shrink */
+  min-height: 200px; /* Minimum height to show ~3 cart items */
+  max-height: none;
   overflow-y: auto;
   padding-right: var(--space-sm);
   margin-bottom: var(--space-md);
@@ -59,8 +64,8 @@ body {
   border-top: 2px solid var(--surface-4);
   padding-top: var(--space-md);
   background-color: var(--surface-2);
-  max-height: 40vh; /* Prevent bottom area from taking too much space */
-  overflow-y: auto; /* Allow bottom area to scroll if needed */
+  max-height: none; /* Remove height restriction for small screens */
+  overflow-y: visible; /* Remove internal scrolling */
 }
 
 .empty-cart-message {
@@ -911,4 +916,79 @@ button[hx-post*="cancel-or-refresh-payment"]:hover {
 /* Hidden HTMX trigger elements */
 .hidden-action-trigger {
     display: none;
+}
+
+/* Responsive design for smaller screens */
+@media (max-height: 700px) {
+  body {
+    height: auto;
+    overflow: visible; /* Allow page scrolling on small screens */
+  }
+  
+  .container {
+    height: auto;
+    min-height: calc(100vh - 160px);
+  }
+  
+  .cart-items-scroll-area {
+    min-height: 150px; /* Smaller minimum on very small screens */
+    max-height: 250px; /* Limit cart height to ensure buttons stay accessible */
+  }
+  
+  .cart-bottom-fixed {
+    max-height: 400px; /* More space for all buttons */
+    overflow-y: auto; /* Make checkout buttons scrollable when needed */
+  }
+}
+
+@media (max-width: 768px) {
+  .container {
+    flex-direction: column;
+    height: auto;
+  }
+  
+  .products-section {
+    border-right: none;
+    border-bottom: 1px solid var(--surface-4);
+    padding-right: 0;
+    padding-bottom: var(--space-lg);
+    margin-bottom: var(--space-lg);
+    max-height: 300px; /* Limit products height on mobile */
+    overflow-y: auto;
+  }
+  
+  .cart-section {
+    padding-left: 0;
+    flex-shrink: 1;
+  }
+  
+  .cart-items-scroll-area {
+    min-height: 120px; /* Even smaller minimum on mobile */
+    max-height: 200px;
+  }
+  
+  .cart-bottom-fixed {
+    max-height: 350px; /* More space on mobile for all buttons */
+    overflow-y: auto; /* Ensure checkout buttons are scrollable */
+  }
+}
+
+@media (max-width: 480px) {
+  body {
+    padding: var(--space-md);
+  }
+  
+  .cart-items-scroll-area {
+    min-height: 100px; /* Very compact on small phones */
+    max-height: 150px;
+  }
+  
+  .products-section {
+    max-height: 200px;
+  }
+  
+  .cart-bottom-fixed {
+    max-height: 300px; /* Enough space even on small phones */
+    overflow-y: auto; /* Critical for button accessibility */
+  }
 }
