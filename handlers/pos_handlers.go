@@ -145,3 +145,21 @@ func ClearTerminalTransactionHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("HX-Trigger", `{"showToast": "Terminal transaction cleared successfully"}`)
 	w.WriteHeader(http.StatusOK)
 }
+
+// CustomProductFormHandler renders the custom product form modal
+func CustomProductFormHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	component := pos.CustomProductModal()
+
+	// Set the trigger to show the modal
+	w.Header().Set("HX-Trigger", "showModal")
+
+	if err := component.Render(r.Context(), w); err != nil {
+		utils.Error("pos", "Error rendering custom product modal", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
+}

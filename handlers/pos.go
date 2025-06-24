@@ -102,7 +102,7 @@ func AddCustomProductHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Add to cart
 	services.AppState.CurrentCart = append(services.AppState.CurrentCart, customProduct)
-	w.Header().Set("HX-Trigger", `{"cartUpdated": true, "scrollCartToBottom": true}`)
+	w.Header().Set("HX-Trigger", `{"cartUpdated": true, "scrollCartToBottom": true, "closeModal": true}`)
 }
 
 // RemoveFromCartHandler removes an item from the cart

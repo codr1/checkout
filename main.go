@@ -245,6 +245,7 @@ func main() {
 	appMux.HandleFunc("/cart-summary", handlers.CartSummaryHandler)
 	appMux.HandleFunc("/add-to-cart", handlers.AddToCartHandler)
 	appMux.HandleFunc("/add-custom-product", handlers.AddCustomProductHandler)
+	appMux.HandleFunc("/custom-product-form", handlers.CustomProductFormHandler)
 	appMux.HandleFunc("/remove-from-cart", handlers.RemoveFromCartHandler)
 	appMux.HandleFunc("/checkout-form", handlers.CheckoutFormHandler)
 	appMux.HandleFunc("/process-payment", handlers.ProcessPaymentHandler)

@@ -1,8 +1,7 @@
 /* Base styles */
 body {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  max-width: 1000px;
-  margin: 0 auto;
+  margin: 0;
   padding: var(--space-lg);
   background-color: var(--surface-2);
   color: var(--text-1);
@@ -16,22 +15,27 @@ body {
   height: calc(100vh - 160px); /* Account for top bar, padding, and some buffer */
 }
 
-.products-section,
-.cart-section {
+.products-section {
   flex: 1;
   min-width: 0; /* Allow flex items to shrink below content size */
-}
-
-.products-section {
   border-right: 1px solid var(--surface-4);
   padding-right: var(--space-lg);
   overflow-y: auto; /* Make products scrollable when needed */
 }
 
-.products-section h3 {
-  margin-top: 0;
-  margin-bottom: var(--space-md);
-  flex-shrink: 0; /* Keep heading visible */
+.cart-section {
+  flex: 0 0 400px; /* Fixed width, no grow/shrink */
+  min-width: 350px; /* Minimum width for cart */
+}
+
+
+
+/* Products grid container */
+.products-section > div:nth-child(2) > div {
+  display: grid;
+  gap: var(--space-md);
+  /* Responsive columns based on available width */
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
 }
 
 .cart-section {
@@ -40,23 +44,21 @@ body {
   flex-direction: column;
   height: 100%;
   min-height: 0; /* Important for flex children to shrink */
-  flex-shrink: 2; /* Shrink cart section more aggressively than products */
 }
 
 /* Cart section layout */
-.cart-section h3 {
-  margin-top: 0;
-  margin-bottom: var(--space-md);
-  flex-shrink: 0;
-}
 
 .cart-items-scroll-area {
   flex: 1;
   min-height: 200px; /* Minimum height to show ~3 cart items */
   max-height: none;
   overflow-y: auto;
-  padding-right: var(--space-sm);
+  padding: var(--space-sm);
   margin-bottom: var(--space-md);
+  background-color: var(--surface-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--surface-4);
+  
 }
 
 .cart-bottom-fixed {
@@ -96,12 +98,13 @@ body {
 .product-item {
   border: 1px solid var(--surface-4);
   padding: var(--space-md);
-  margin-bottom: var(--space-md);
+  margin-bottom: 0; /* Remove margin since grid handles spacing */
   border-radius: var(--radius-md);
   cursor: pointer;
   background-color: var(--surface-1);
   color: var(--text-1);
   transition: all var(--transition-fast);
+  height: fit-content; /* Prevent stretching */
 }
 
 .product-item:hover {
@@ -115,10 +118,12 @@ body {
   display: flex;
   justify-content: space-between;
   padding: var(--space-md);
-  border-bottom: 1px solid var(--surface-4);
+  border: 1px solid var(--surface-4);
+  border-radius: var(--radius-md);
   background-color: var(--surface-1);
   color: var(--text-1);
   margin-bottom: 10px;
+  box-shadow: var(--shadow-sm);
 }
 
 /* Button styles */
@@ -163,17 +168,12 @@ button {
   border-color: var(--text-3);
 }
 
+/* Manual card form styles */
 .manual-card-form .checkout-btn,
 .manual-card-form .cancel-btn {
   display: inline-block;
   width: auto;
   margin-right: var(--space-md);
-}
-
-.manual-card-form .button-group {
-  margin-top: var(--space-lg);
-  display: flex;
-  justify-content: flex-end;
 }
 
 /* Payment methods */
@@ -199,22 +199,6 @@ button {
 
 #qr-code-btn:hover {
   background-color: var(--warning-hover);
-}
-
-/* QR code styles */
-.qr-code {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  margin: var(--space-lg) 0;
-}
-
-.qr-code img {
-  border: 1px solid var(--surface-4);
-  border-radius: var(--radius-lg);
-  padding: var(--space-md);
-  box-shadow: var(--shadow-md);
-  background-color: var(--surface-1);
 }
 
 /* Progress bar */
@@ -261,38 +245,7 @@ input[type="tel"]:focus {
   box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
 }
 
-/* Card type display */
-#card-type {
-  margin-top: var(--space-xs);
-  font-weight: bold;
-  color: var(--brand);
-  height: 20px;
-}
 
-/* Custom product form */
-.custom-product {
-  margin-top: var(--space-lg);
-  padding: var(--space-md);
-  border: 1px solid var(--surface-4);
-  border-radius: var(--radius-md);
-  background-color: var(--surface-1);
-}
-
-.custom-product input,
-.custom-product button {
-  margin-top: var(--space-md);
-  padding: var(--space-sm);
-}
-
-.custom-product button {
-  background-color: var(--brand);
-  color: var(--surface-1);
-  border: none;
-}
-
-.custom-product button:hover {
-  background-color: var(--brand-hover);
-}
 
 /* Login styles */
 .login-container {
@@ -420,7 +373,7 @@ input[type="tel"]:focus {
 .modal-footer {
   margin-top: var(--space-lg);
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: var(--space-md);
 }
 
@@ -452,17 +405,11 @@ input[type="tel"]:focus {
   font-weight: bold;
 }
 
-.modal-content .close-btn,
-.modal-content .retry-btn {
-  margin-top: var(--space-md);
-}
+/* Modal button overrides handled by existing .close-btn and .checkout-btn styles */
 
-.modal-content .close-btn {
-  background-color: var(--danger);
-}
-
-.modal-content .retry-btn {
-  background-color: var(--brand);
+/* Custom product modal */
+.custom-product-modal {
+  min-width: 400px;
 }
 
 /* Test mode banner */
@@ -473,29 +420,6 @@ input[type="tel"]:focus {
   padding: var(--space-sm);
   font-size: var(--text-sm);
   font-weight: 500;
-}
-
-/* Animations */
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: scale(0.9);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes fadeOut {
-  from {
-    opacity: 1;
-    transform: scale(1);
-  }
-  to {
-    opacity: 0;
-    transform: scale(0.9);
-  }
 }
 
 /* Top bar controls */
@@ -787,28 +711,6 @@ button[hx-post*="cancel-or-refresh-payment"]:hover {
   margin-top: var(--space-sm);
 }
 
-/* Responsive adjustments */
-@media (max-width: 768px) {
-  .settings-header {
-    flex-direction: column;
-    gap: var(--space-md);
-    align-items: stretch;
-  }
-
-  .search-container {
-    width: 100%;
-  }
-
-  .settings-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .theme-toggle {
-    top: var(--space-md);
-    right: var(--space-md);
-  }
-}
-
 /* Settings search highlighting */
 .setting-item.highlight {
   background-color: rgba(255, 255, 0, 0.1);
@@ -941,6 +843,25 @@ button[hx-post*="cancel-or-refresh-payment"]:hover {
   }
 }
 
+/* Products responsive columns */
+@media (min-width: 600px) {
+  .products-section > div:nth-child(2) > div {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  }
+}
+
+@media (min-width: 900px) {
+  .products-section > div:nth-child(2) > div {
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  }
+}
+
+@media (min-width: 1200px) {
+  .products-section > div:nth-child(2) > div {
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  }
+}
+
 @media (max-width: 768px) {
   .container {
     flex-direction: column;
@@ -955,6 +876,11 @@ button[hx-post*="cancel-or-refresh-payment"]:hover {
     margin-bottom: var(--space-lg);
     max-height: 300px; /* Limit products height on mobile */
     overflow-y: auto;
+  }
+  
+  /* Single column on mobile */
+  .products-section > div:nth-child(2) > div {
+    grid-template-columns: 1fr;
   }
   
   .cart-section {
@@ -991,4 +917,58 @@ button[hx-post*="cancel-or-refresh-payment"]:hover {
     max-height: 300px; /* Enough space even on small phones */
     overflow-y: auto; /* Critical for button accessibility */
   }
+}
+
+/* Section headers */
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-md);
+}
+
+.section-header h3 {
+  margin: 0;
+}
+
+/* Header action buttons */
+.header-action-btn {
+  background-color: var(--surface-3);
+  color: var(--text-1);
+  border: 1px solid var(--surface-4);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.header-action-btn:hover {
+  background-color: var(--surface-4);
+  border-color: var(--text-3);
+}
+
+/* Add custom product button */
+.add-custom-btn {
+  padding: var(--space-sm) var(--space-md);
+  font-size: var(--text-sm);
+}
+
+
+
+/* Clear cart button */
+.clear-cart-btn {
+  color: var(--text-2);
+  padding: var(--space-xs) var(--space-sm);
+  font-size: var(--text-lg);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.clear-cart-btn:hover {
+  background-color: var(--danger);
+  color: var(--surface-1);
+  border-color: var(--danger);
 }

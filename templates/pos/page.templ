@@ -72,28 +72,24 @@ templ Page(availableReaders []templates.StripeReader, selectedReaderID string) {
 
 		<div class="container">
 			<div class="products-section">
-				<h3>Products</h3>
-				<div hx-get="/products" hx-trigger="load"></div>
-
-				<div class="custom-product">
-					<h3>Custom Product</h3>
-					<form hx-post="/add-custom-product" hx-swap="none">
-						<div>
-							<input type="text" name="name" placeholder="Product name" required/>
-						</div>
-						<div>
-							<input type="text" name="description" placeholder="Description"/>
-						</div>
-						<div>
-							<input type="number" name="price" step="0.01" placeholder="Price" required/>
-						</div>
-						<button type="submit">Add to Cart</button>
-					</form>
+				<div class="section-header">
+					<h3>Products</h3>
+					<button type="button" class="header-action-btn add-custom-btn" 
+							hx-get="/custom-product-form" 
+							hx-target="#modal-content">+ Add Custom Product</button>
 				</div>
+				<div hx-get="/products" hx-trigger="load"></div>
 			</div>
 			
 			<div class="cart-section">
-				<h3>Current Cart</h3>
+				<div class="section-header">
+					<h3>Current Cart</h3>
+					<button type="button" class="header-action-btn clear-cart-btn" 
+							hx-post="/cancel-transaction" 
+							hx-swap="none" 
+							hx-confirm="Are you sure you want to cancel this transaction? This will clear your cart."
+							title="Clear Cart">×</button>
+				</div>
 				
 				<!-- Scrollable cart items area -->
 				<div class="cart-items-scroll-area" hx-get="/cart-items" hx-trigger="load, cartUpdated from:body"></div>
@@ -118,4 +114,26 @@ templ Page(availableReaders []templates.StripeReader, selectedReaderID string) {
 			</div>
 		</div>
 	}
+}
+
+// CustomProductModal renders the custom product form in a modal
+templ CustomProductModal() {
+	<div class="custom-product-modal">
+		<h3>Add Custom Product</h3>
+		<form hx-post="/add-custom-product" hx-swap="none">
+			<div>
+				<input type="text" name="name" placeholder="Product name" required/>
+			</div>
+			<div>
+				<input type="text" name="description" placeholder="Description"/>
+			</div>
+			<div>
+				<input type="number" name="price" step="0.01" placeholder="Price" required/>
+			</div>
+			<div class="modal-footer">
+				<button type="button" class="cancel-btn" hx-post="/close-modal" hx-swap="none">Cancel</button>
+				<button type="submit">Add to Cart</button>
+			</div>
+		</form>
+	</div>
 }
