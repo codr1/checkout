@@ -59,8 +59,11 @@ templ ProductsList(products []templates.Product, subcategories []string, current
 					hx-swap="none" 
 					hx-vals={ ToJSON(map[string]string{"id": product.ID}) }
 				>
-					<h3>{ product.Name } - ${ FormatPrice(product.Price) }</h3>
-					<p>{ product.Description }</p>
+					<h3>
+						<span class="product-name" title={ product.Name }>{ product.Name }</span>
+						<span class="product-price"> - ${ FormatPrice(product.Price) }</span>
+					</h3>
+					<p class="product-description" title={ product.Description }>{ product.Description }</p>
 				</div>
 			}
 		</div>
