@@ -44,10 +44,10 @@ func CalculateCartSummaryWithItemTaxes() (templates.CartSummary, []float64) {
 
 // GetTaxRateForService returns the applicable tax rate for a service
 func GetTaxRateForService(service templates.Product) float64 {
-	// If service has a category, look up the category tax rate
-	if service.Category != "" {
+	// If service has a tax category, look up the category tax rate
+	if service.TaxCategory != "" {
 		for _, category := range config.Config.TaxCategories {
-			if category.ID == service.Category {
+			if category.ID == service.TaxCategory {
 				return category.TaxRate
 			}
 		}

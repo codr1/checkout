@@ -4,12 +4,54 @@ import (
 	"checkout/templates"
 )
 
-// Products list component
-templ ProductsList(products []templates.Product) {
+// Products list component with category navigation
+templ ProductsList(products []templates.Product, subcategories []string, currentPath []string) {
 	<div>
-		if len(products) == 0 {
-			<p>No products available</p>
-		} else {
+		<!-- Navigation back buttons -->
+		if len(currentPath) > 0 {
+			<div class="nav-back-buttons">
+				<button 
+					class="nav-back-button nav-back-button-half" 
+					hx-post="/navigate-category" 
+					hx-vals={ ToJSON(map[string]interface{}{"path": currentPath[:len(currentPath)-1]}) }
+					hx-swap="none"
+				>
+					if len(currentPath) == 1 {
+						⬅ Back to Home
+					} else {
+						⬅ Back to { currentPath[len(currentPath)-2] }
+					}
+				</button>
+				<button 
+					class="nav-back-button nav-back-button-half" 
+					hx-post="/navigate-category" 
+					hx-vals={ ToJSON(map[string]interface{}{"path": []string{}}) }
+					hx-swap="none"
+				>⌂ Home</button>
+			</div>
+		}
+
+		<!-- Combined grid for categories and products -->
+		<div class="products-grid">
+			<!-- Category navigation buttons -->
+			for _, category := range subcategories {
+				<button 
+					class="category-button" 
+					hx-post="/navigate-category" 
+					hx-vals={ ToJSON(map[string]interface{}{"path": append(currentPath, category)}) }
+					hx-swap="none"
+				>
+					<h3>{ category }</h3>
+					<p>Category</p>
+				</button>
+			}
+
+			<!-- Force products to start on new row if categories exist -->
+			if len(subcategories) > 0 && len(products) > 0 {
+				<div class="next-row" style="height: 0; visibility: hidden;"></div>
+			}
+
+			<!-- Products -->
 			for _, product := range products {
 				<div 
 					class="product-item" 
@@ -21,6 +63,11 @@ templ ProductsList(products []templates.Product) {
 					<p>{ product.Description }</p>
 				</div>
 			}
+		</div>
+
+		<!-- Show message only if no categories and no products -->
+		if len(subcategories) == 0 && len(products) == 0 {
+			<p>No products available</p>
 		}
 	</div>
 }

@@ -185,6 +185,8 @@ func LoadProducts() error {
 		utils.Debug("products", "Before AppState assignment", "product", p.Name, "id", p.ID, "stripe_product_id", p.StripeProductID, "price_id", p.PriceID)
 	}
 	AppState.Products = products
+	// Build category navigation data
+	AppState.CategoryData = BuildCategoryData(AppState.Products)
 	utils.Debug("products", "Finished LoadServices, AppState.Products populated")
 	// Log the state of AppState.Products after assignment
 	for _, p_app := range AppState.Products {

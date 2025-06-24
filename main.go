@@ -241,6 +241,7 @@ func main() {
 
 	// API routes (protected)
 	appMux.HandleFunc("/products", handlers.ProductsHandler)
+	appMux.HandleFunc("/navigate-category", handlers.NavigateCategoryHandler)
 	appMux.HandleFunc("/cart-items", handlers.CartItemsHandler)
 	appMux.HandleFunc("/cart-summary", handlers.CartSummaryHandler)
 	appMux.HandleFunc("/add-to-cart", handlers.AddToCartHandler)

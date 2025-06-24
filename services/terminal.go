@@ -51,7 +51,7 @@ func ShouldEnableTipping(transactionAmount float64, cart []templates.Product, lo
 		hasAllowedCategory := false
 		for _, product := range cart {
 			for _, allowedCategory := range config.Config.TippingProductCategoriesOnly {
-				if product.Category == allowedCategory {
+				if product.TaxCategory == allowedCategory {
 					hasAllowedCategory = true
 					break
 				}

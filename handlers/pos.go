@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"checkout/services"
@@ -15,11 +16,69 @@ import (
 
 // ProductsHandler renders the products list
 func ProductsHandler(w http.ResponseWriter, r *http.Request) {
-	component := pos.ProductsList(services.AppState.Products)
+	products := services.GetCurrentProducts()
+	subcategories := services.GetCurrentSubcategories()
+	currentPath := services.AppState.CategoryData.CurrentPath
+
+	component := pos.ProductsList(products, subcategories, currentPath)
 	err := component.Render(r.Context(), w)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+// NavigateCategoryHandler handles category navigation
+func NavigateCategoryHandler(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Error parsing form", http.StatusBadRequest)
+		return
+	}
+
+	// Debug: log all form values
+	utils.Debug("category", "NavigateCategoryHandler called", "form", r.Form)
+
+	// Parse the path from form data
+	// HTMX sends array values as multiple form fields with the same name
+	pathValues := r.Form["path"]
+	var path []string
+
+	utils.Debug("category", "Raw path values", "pathValues", pathValues)
+
+	// Handle different ways HTMX might send the array
+	if len(pathValues) > 0 {
+		for _, pathValue := range pathValues {
+			if pathValue != "" && pathValue != "[]" {
+				// Try to parse as JSON array first
+				if strings.HasPrefix(pathValue, "[") && strings.HasSuffix(pathValue, "]") {
+					// Remove brackets and split by comma
+					pathStr := strings.Trim(pathValue, "[]")
+					if pathStr != "" {
+						parts := strings.Split(pathStr, ",")
+						for _, part := range parts {
+							trimmed := strings.Trim(strings.TrimSpace(part), `"`)
+							if trimmed != "" {
+								path = append(path, trimmed)
+							}
+						}
+					}
+				} else {
+					// Single value, add it directly
+					path = append(path, pathValue)
+				}
+			}
+		}
+	}
+
+	utils.Debug("category", "Parsed path", "path", path)
+
+	// Navigate to the category
+	services.AppState.CategoryData.CurrentPath = path
+
+	utils.Debug("category", "Updated current path", "currentPath", services.AppState.CategoryData.CurrentPath)
+
+	// Return updated products view
+	w.Header().Set("HX-Trigger", "categoryChanged")
+	ProductsHandler(w, r)
 }
 
 // CartItemsHandler renders only the cart items (for scrollable area)

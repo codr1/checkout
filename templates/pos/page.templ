@@ -78,7 +78,7 @@ templ Page(availableReaders []templates.StripeReader, selectedReaderID string) {
 							hx-get="/custom-product-form" 
 							hx-target="#modal-content">+ Add Custom Product</button>
 				</div>
-				<div hx-get="/products" hx-trigger="load"></div>
+				<div hx-get="/products" hx-trigger="load, categoryChanged from:body"></div>
 			</div>
 			
 			<div class="cart-section">

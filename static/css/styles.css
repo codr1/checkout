@@ -28,10 +28,8 @@ body {
   min-width: 350px; /* Minimum width for cart */
 }
 
-
-
 /* Products grid container */
-.products-section > div:nth-child(2) > div {
+.products-grid {
   display: grid;
   gap: var(--space-md);
   /* Responsive columns based on available width */
@@ -244,8 +242,6 @@ input[type="tel"]:focus {
   border-color: var(--brand);
   box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
 }
-
-
 
 /* Login styles */
 .login-container {
@@ -845,19 +841,19 @@ button[hx-post*="cancel-or-refresh-payment"]:hover {
 
 /* Products responsive columns */
 @media (min-width: 600px) {
-  .products-section > div:nth-child(2) > div {
+  .products-grid {
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   }
 }
 
 @media (min-width: 900px) {
-  .products-section > div:nth-child(2) > div {
+  .products-grid {
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   }
 }
 
 @media (min-width: 1200px) {
-  .products-section > div:nth-child(2) > div {
+  .products-grid {
     grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   }
 }
@@ -879,7 +875,7 @@ button[hx-post*="cancel-or-refresh-payment"]:hover {
   }
   
   /* Single column on mobile */
-  .products-section > div:nth-child(2) > div {
+  .products-grid {
     grid-template-columns: 1fr;
   }
   
@@ -952,8 +948,6 @@ button[hx-post*="cancel-or-refresh-payment"]:hover {
   font-size: var(--text-sm);
 }
 
-
-
 /* Clear cart button */
 .clear-cart-btn {
   color: var(--text-2);
@@ -971,4 +965,84 @@ button[hx-post*="cancel-or-refresh-payment"]:hover {
   background-color: var(--danger);
   color: var(--surface-1);
   border-color: var(--danger);
+}
+
+/* Category navigation buttons */
+.category-nav-section {
+  margin-bottom: var(--space-lg);
+}
+
+.category-buttons-container {
+  display: grid;
+  gap: var(--space-md);
+  /* Use same responsive grid as products */
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  margin-bottom: var(--space-lg);
+}
+
+.category-button {
+  /* Base styling exactly like product-item */
+  border: 3px solid var(--brand); /* Thicker border than products */
+  padding: var(--space-md);
+  margin-bottom: 0; /* Remove margin since grid handles spacing */
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  background-color: var(--surface-1); /* Same as products */
+  color: var(--brand); /* Brand color text */
+  transition: all var(--transition-fast);
+  height: fit-content; /* Prevent stretching */
+  font-weight: 600;
+  font-size: var(--text-base);
+  
+  /* Enhanced effects */
+  box-shadow: var(--shadow-lg); /* Heavier shadow than products */
+  filter: drop-shadow(0 0 12px rgba(0, 123, 255, 0.4)); /* Glow effect */
+}
+
+.category-button:hover {
+  background-color: var(--brand);
+  color: var(--surface-1);
+  border-color: var(--brand-hover);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-xl); /* Even heavier shadow on hover */
+  filter: drop-shadow(0 0 16px rgba(0, 123, 255, 0.6)); /* More glow on hover */
+}
+
+.nav-back-buttons {
+  display: flex;
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
+  width: 100%; /* Ensure full width */
+  grid-column: initial; /* Override any grid behavior */
+  grid-row: initial; /* Override any grid behavior */
+}
+
+.nav-back-button {
+  background-color: #4caf50;
+  color: var(--surface-1);
+  border: 2px solid #4caf50;
+  box-shadow: var(--shadow-md);
+  font-weight: 600;
+  padding: var(--space-md) var(--space-lg);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-size: var(--text-base);
+}
+
+.nav-back-button-half {
+  flex: 1; /* Each button takes equal width */
+}
+
+.nav-back-button:hover {
+  background-color: #45a049;
+  border-color: #45a049;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-lg);
+}
+
+/* Force grid line break */
+.next-row {
+  grid-column: 1 / -1; /* Span full width */
+  grid-row: auto;
 }

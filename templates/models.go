@@ -8,7 +8,8 @@ type Product struct {
 	Price           float64 `json:"price"`
 	StripeProductID string  `json:"stripeProductID,omitempty"` // Stripe Product ID (e.g., prod_xxxxxxxxxxxxxx)
 	PriceID         string  `json:"priceID,omitempty"`         // Stripe Price ID (e.g., price_xxxxxxxxxxxxxx) for the default price
-	Category        string  `json:"category,omitempty"`        // Tax category ID
+	Category        string  `json:"category,omitempty"`        // Navigation category path (e.g., "cat1/cat2")
+	TaxCategory     string  `json:"taxCategory,omitempty"`     // Tax category ID
 }
 
 // CartSummary contains the cart totals
