@@ -33,7 +33,7 @@ body {
   display: grid;
   gap: var(--space-md);
   /* Responsive columns based on available width */
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
 }
 
 .cart-section {
@@ -105,17 +105,13 @@ body {
   height: fit-content; /* Prevent stretching */
 }
 
-.product-item:hover {
-  background-color: var(--surface-3);
-  border-color: var(--brand);
-  box-shadow: var(--shadow-sm);
-}
-
-/* Product item text layout */
 .product-item h3 {
   display: flex;
   align-items: center;
-  margin: 0 0 var(--space-sm) 0; /* Standard h3 margins */
+  margin: 1.17em 0; /* Restore default h3 margins */
+  font-size: 1.17em; /* Restore default h3 font size */
+  font-weight: bold; /* Restore default h3 font weight */
+  line-height: 1.2; /* Restore default h3 line height */
 }
 
 .product-name {
@@ -126,16 +122,28 @@ body {
   min-width: 0; /* Allow flex item to shrink below content size */
 }
 
+.product-separator {
+  flex-shrink: 0; /* Never shrink the separator */
+}
+
 .product-price {
   flex-shrink: 0; /* Never shrink the price */
-  margin-left: auto; /* Push to the right */
+  font-weight: bold; /* Make price stand out */
 }
 
 .product-description {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  margin: 0; /* Remove default p margins */
+  margin: 1em 0; /* Restore default p margins */
+  font-size: 1em; /* Restore default p font size */
+  line-height: 1.4; /* Restore default p line height */
+}
+
+.product-item:hover {
+  background-color: var(--surface-3);
+  border-color: var(--brand);
+  box-shadow: var(--shadow-sm);
 }
 
 /* Cart items */
@@ -869,19 +877,19 @@ button[hx-post*="cancel-or-refresh-payment"]:hover {
 /* Products responsive columns */
 @media (min-width: 600px) {
   .products-grid {
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
   }
 }
 
 @media (min-width: 900px) {
   .products-grid {
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
   }
 }
 
 @media (min-width: 1200px) {
   .products-grid {
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   }
 }
 

@@ -61,7 +61,8 @@ templ ProductsList(products []templates.Product, subcategories []string, current
 				>
 					<h3>
 						<span class="product-name" title={ product.Name }>{ product.Name }</span>
-						<span class="product-price"> - ${ FormatPrice(product.Price) }</span>
+						<span class="product-separator"> - </span>
+						<span class="product-price">${ FormatPrice(product.Price) }</span>
 					</h3>
 					<p class="product-description" title={ product.Description }>{ product.Description }</p>
 				</div>
