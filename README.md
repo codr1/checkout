@@ -120,11 +120,32 @@ Settings can also be manually edited in the `./data/config.json` file when the a
 
 - `/data`: Contains configuration and data files
   - `/data/config.json`: Application configuration including tax rates
-  - `/data/products.json`: Product catalog with optional category assignments
+  - `/data/products.json`: Product catalog with category assignments
   - `/data/transactions`: Contains daily transaction CSV files
 - `/templates`: HTMX templates for the UI
 - `/static`: Static assets like CSS
 - `/config`: Configuration handling code
+
+## Product Categories
+
+The system supports hierarchical product categories for navigation and organization:
+
+### Navigation Categories
+- Organize products into categories like "Food/Beverages/Soft" or "Services/Training"
+- Use forward slashes to create subcategories (e.g., "Beverages/Alcoholic")
+- Products without categories appear at the root level
+- Navigate by clicking category buttons, use back buttons to return to previous levels
+
+### Adding Categories to Products
+Edit `./data/products.json` and add a `category` field:
+```json
+{
+  "id": "1",
+  "name": "Diet Coke",
+  "price": 3.00,
+  "category": "Beverages/Soft"
+}
+```
 
 ## Tax Configuration
 
@@ -132,19 +153,30 @@ The system uses a simple local tax calculation system that's cost-effective and 
 
 ### Default Tax Rate
 - Set during initial configuration setup
-- Applied to all products/services unless they have a specific category tax rate
+- Applied to all products/services unless they have a specific tax category rate
 - Stored as a decimal value (e.g., 0.0625 for 6.25%)
 
 ### Tax Categories (Optional)
-- Create product categories with specific tax rates
-- Assign categories to products/services
-- Products without categories use the default tax rate
-- Categories can be managed through the configuration file
+- Create tax categories with specific tax rates for different product types
+- Assign tax categories to products using the `taxCategory` field
+- Products without tax categories use the default tax rate
+- Tax categories can be managed through the configuration file
 
 ### Tax Calculation
 - Tax is calculated locally without external API calls
-- Each item in the cart uses either its category tax rate or the default rate
+- Each item in the cart uses either its tax category rate or the default rate
 - Total tax is the sum of individual item taxes
+
+### Example Product with Tax Category
+```json
+{
+  "id": "2",
+  "name": "Personal Training",
+  "price": 100.00,
+  "category": "Services/Training",
+  "taxCategory": "services"
+}
+```
 
 ## Tipping Configuration
 
